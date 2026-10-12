@@ -1,0 +1,142 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Hardware facts to probe. Defaults are the values for the target SoC from the course tapeout
+# repo and the Atlas NPU sources; override them if a bitstream or later RTL differs.
+
+# The Atlas base and size values are fallbacks for when the devicetree has no enabled
+# ucb-bar,atlas node. penguin.dtsi enables one for every variant, including the generic vcu118
+# where Atlas is unverified, so they are normally unused; PROBE_ATLAS defaults off on the
+# emulation board.
+
+mainmenu "Hardware probe"
+
+menu "Probe sections"
+
+config PROBE_IDENTITY
+	bool "Section 1: identity CSRs (misa, mvendorid, ...)"
+	default y
+
+config PROBE_VECTOR
+	bool "Section 2: vector unit (vlenb, VLMAX, vector add)"
+	default y
+
+config PROBE_CLOCKS
+	bool "Section 3: measure core clock against mtime"
+	default y
+
+config PROBE_SCRATCHPAD
+	bool "Section 4: scratchpad write/readback (traps on Spike)"
+	default n if CHIPYARD_FPGA_EMULATION
+	default y
+	help
+	  Off by default on the VCU118 variant, where the scratchpad address is unknown (MMIO was
+	  re-configured). A missing device traps and the fatal handler prints the faulting
+	  address.
+
+config PROBE_ATLAS
+	bool "Section 5: Atlas NPU CSR/VMEM/IMEM access (traps on Spike)"
+	default n if CHIPYARD_FPGA_EMULATION
+	default y
+	help
+	  Reads the 7 CSRs, checks the core is halted, round-trips dbg0/dbg1,
+	  VMEM and (only while halted) IMEM. Never writes execControl.
+
+config PROBE_DRAM_SIZE
+	bool "Section 6: DRAM size probe (DANGEROUS, may hang)"
+	default n
+	help
+	  Touches addresses at 256 MiB, 512 MiB, 1 GiB ... above the DRAM base. The chip has
+	  no DRAM; accesses go over SerialTL to the FPGA, and an address the FPGA does not map
+	  may never respond and hang the bus.
+
+endmenu
+
+menu "Clock measurement"
+
+config PROBE_MTIME_HZ
+	int "Assumed mtime rate in Hz"
+	default SYS_CLOCK_HW_CYCLES_PER_SEC
+	help
+	  WithPeripheryBusFrequency(500) sets timebase 500000 (ClockingFragments.scala:91-96); an
+	  FPGA bitstream may differ. Used to convert the measured ratio to MHz.
+
+config PROBE_MTIME_WINDOW_TICKS
+	int "Measurement window in mtime ticks"
+	default 50000
+	help
+	  50000 ticks = 0.1 s at 500 kHz.
+
+config PROBE_EXPECTED_CORE_MHZ
+	int "Expected core clock in MHz (only for the WARN check)"
+	default 50 if CHIPYARD_FPGA_TA
+	default CHIPYARD_FPGA_PBUS_MHZ if CHIPYARD_FPGA_EMULATION
+	default 500
+	help
+	  All buses run at 500 MHz. A measurement more than 20 percent away prints a WARN, not a
+	  FAIL.
+
+config PROBE_CLOCK_TIMEOUT_CYCLES
+	int "Give up waiting for mtime after this many mcycle counts"
+	default 2000000000
+	help
+	  Stops the wait if mtime does not tick.
+
+endmenu
+
+menu "Addresses"
+
+config PROBE_SPAD_BASE
+	hex "Scratchpad base"
+	default 0x08000000
+	help
+	  MBUS scratchpad (AbstractConfig.scala:120-121).
+
+config PROBE_SPAD_SIZE
+	hex "Scratchpad size in bytes"
+	default 0x10000
+	help
+	  64 KiB (AbstractConfig.scala:120-121).
+
+config PROBE_SPAD_FULL
+	bool "Test the whole scratchpad, not just first/last 1 KiB"
+	default n
+
+config PROBE_ATLAS_IMEM_BASE
+	hex "Atlas IMEM base"
+	default 0x00020000
+	help
+	  ATLAS s2: AtlasMemMap, ScalarCore.scala:39-42. 128 KiB, PBUS.
+
+config PROBE_ATLAS_IMEM_SIZE
+	hex "Atlas IMEM size"
+	default 0x20000
+
+config PROBE_ATLAS_CSR_BASE
+	hex "Atlas CSR base"
+	default 0x00040000
+	help
+	  ATLAS s2.1: ScalarCore.scala:44-48; 7 words at offsets 0x00..0x18.
+
+config PROBE_ATLAS_VMEM_BASE
+	hex "Atlas VMEM base"
+	default 0x20000000
+	help
+	  ATLAS s2: ScalarCore.scala:49-51; SBUS, 6 banks of 256 KiB.
+
+config PROBE_ATLAS_VMEM_SIZE
+	hex "Atlas VMEM size"
+	default 0x180000
+
+config PROBE_ATLAS_VMEM_BANK_SIZE
+	hex "Atlas VMEM bank size"
+	default 0x40000
+
+config PROBE_DRAM_BASE
+	hex "DRAM base (for the optional size probe)"
+	default 0x80000000
+	help
+	  DRAM at 0x8000_0000, served by the FPGA over SerialTL.
+
+endmenu
+
+source "Kconfig.zephyr"

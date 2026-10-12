@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: Apache-2.0
+
+mainmenu "Atlas upstream host tests (built from tapeout-chipyard)"
+
+config ATLAS_UPSTREAM_TIMEOUT_S
+	int "Watchdog: seconds of wall time before the test is declared hung"
+	default 120
+	help
+	  Upstream polls the Atlas status register up to 200 million times before
+	  reporting a failure, which takes minutes on a slow link, and some tests
+	  have no timeout. The shim runs the test's main() in the main thread
+	  and a watchdog thread that, after this many seconds, writes
+	  execControl=0 (stops Atlas), prints "ATLASUP <test> TIMEOUT" and ends
+	  the run with exit code 124.
+
+	  It cannot help if a bus access never returns; the last line printed
+	  before the hang then names the stage.
+
+source "Kconfig.zephyr"

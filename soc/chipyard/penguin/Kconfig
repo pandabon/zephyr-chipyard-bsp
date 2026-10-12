@@ -1,0 +1,100 @@
+# SPDX-License-Identifier: Apache-2.0
+
+config SOC_PENGUIN
+	select RISCV
+	# Machine-level CSRs and traps (mstatus, mtvec, ...). The hardware has S/U modes and Sv39
+	# (useVM = true gives hasSupervisorMode, tapeout repo RC/tile/Core.scala:64), but Zephyr
+	# runs in M-mode. There is no PMP (nPMPs = 0, shuttle common/Parameters.scala:56), so
+	# keep RISCV_PMP and USERSPACE off.
+	select RISCV_PRIVILEGED
+	select RISCV_HAS_PLIC
+	select RISCV_SOC_HAS_GP_RELATIVE_ADDRESSING
+	select ATOMIC_OPERATIONS_BUILTIN
+	select INCLUDE_RESET_VECTOR
+	select 64BIT
+	select RISCV_ISA_RV64I
+	select RISCV_ISA_EXT_M
+	select RISCV_ISA_EXT_A
+	select RISCV_ISA_EXT_F
+	select RISCV_ISA_EXT_D
+	select RISCV_ISA_EXT_C
+	select RISCV_ISA_EXT_ZICSR
+	select RISCV_ISA_EXT_ZIFENCEI
+	select RISCV_ISA_EXT_V
+	# Confirmed in the Shuttle/Saturn parameters of the course tapeout repo (high confidence;
+	# chip = EE290TapeoutConfig, T/README.md:69-83). Everything selected here goes into GCC's
+	# -march and Spike's --isa (cmake/spike.cmake).
+	#  - Zfh:    FPU minFLen = 16 (scalar half precision)
+	#  - Zba/Zbb/Zbs: useZba/useZbb/useZbs = true
+	#  - Zvfh:   Saturn vfh = true (vector FP16 arithmetic)
+	select RISCV_ISA_EXT_ZFH
+	select RISCV_ISA_EXT_ZBA
+	select RISCV_ISA_EXT_ZBB
+	select RISCV_ISA_EXT_ZBS
+	select RISCV_ISA_EXT_ZVFH
+	# Not selected:
+	#  - Zicntr: the chip's riscv,isa omits it (rocket-chip comments it out: "rdtime[h] is not
+	#    implemented", BaseTile.scala:136-139), so read mtime over MMIO. Zephyr's
+	#    target_riscv.cmake would emit "..._zicntrv_..." (no underscore before "v"), which GCC
+	#    rejects. csrr of cycle/time/instret assembles without it.
+	# BF16: Saturn's "mx" build (mxParams) adds zvfofp8min, zfbfmin, zvfbfmin and zvfbfa to
+	# riscv,isa (tapeout-chipyard generators/saturn/src/main/scala/common/Parameters.scala
+	# :55-60, :374-377).
+	#  - Zvfbfmin (vfwcvtbf16 / vfncvtbf16): selected. GCC 14.3 and binutils 2.43 in SDK
+	#    1.0-beta1 accept it.
+	#  - Zfbfmin and Zvfbfa (BF16 vector arithmetic via vtype.altfmt): GCC 14.3 rejects
+	#    "-march=..._zfbfmin" and nothing in the fork or GCC 14 knows Zvfbfa, so selecting
+	#    them would break every build. Only Spike is told (SPIKE_ISA_EXTRA in
+	#    boards/chipyard/penguin/board.cmake). tests/arch/rvv/bf16 uses Zvfbfmin mnemonics and
+	#    sets vtype.altfmt by hand with vsetvl.
+	#  - Zvfofp8min: Spike has it, GCC 14.3 does not, and nothing here uses FP8.
+	# The fork's Kconfig.isa help text for ZVFBFMIN has the Zbs help text appended; the symbol
+	# and the -march text are unaffected.
+	select RISCV_ISA_EXT_ZVFBFMIN
+	# Not selected: Zvbb (no Zephyr symbol, not needed by the kernel).
+	select CPU_HAS_FPU_DOUBLE_PRECISION
+	imply XIP
+
+# ---- Whole-SoC FPGA emulation (board variant "vcu118") ----------------------
+
+config CHIPYARD_FPGA_EMULATION
+	bool "Whole SoC emulated on an FPGA (VCU118), UART console, no HTIF"
+	depends on SOC_PENGUIN
+	help
+	  Selected by the board variant chipyard_penguin/penguin/vcu118. Switches the clocks to
+	  the generic Chipyard VCU118 flow (fpga/src/main/scala/vcu118/Configs.scala): 1 MHz mtime,
+	  UART input clock = the bus clock below. These are assumptions; the Penguin-on-VCU118
+	  config is not available.
+
+config CHIPYARD_FPGA_PBUS_MHZ
+	int "Peripheral bus (UART input) clock in MHz"
+	default 100
+	range 1 1000
+	depends on CHIPYARD_FPGA_EMULATION
+	help
+	  Frequency of the PBUS that clocks the SiFive UART. The generic Chipyard VCU118 flow builds
+	  with WithFPGAFrequency(N) for N = 25, 50, 75 or 100 (default 100, WithVCU118Tweaks). A
+	  mismatch with the bitstream garbles the console. Zephyr uses
+	  SIFIVE_PERIPHERAL_CLOCK_FREQUENCY = SYS_CLOCK_HW_CYCLES_PER_SEC * RTC_CLOCK_DIVIDER_VALUE
+	  (soc.h), and RTC_CLOCK_DIVIDER_VALUE is set to this number.
+
+config CHIPYARD_FPGA_TA
+	bool "Real Penguin RTL on a VCU118 as the TA's EE290VCU118Config (HTIF console)"
+	depends on SOC_PENGUIN
+	help
+	  Selected by the board variant chipyard_penguin/penguin/vcu118_ta. Changes only the clocks:
+	  every bus is 50 MHz and the timebase (mtime) is 50 kHz, from WithFPGAFrequency(50)
+	  (bringup-chipyard 245f2a9d, fpga/src/main/scala/vcu118/Configs.scala:88,112-119 and
+	  ClockingFragments.scala:92-93). The console stays HTIF over UART-TSI. Confirmed against
+	  the DTS generated for EE290VCU118Config (fpga/generated-src/chipyard.fpga.vcu118.
+	  VCU118FPGATestHarness.EE290VCU118Config/*.dts): timebase-frequency = <50000> (line 17),
+	  every bus clock-frequency = <50000000> (lines 65-129).
+
+config CHIPYARD_SIM_EXIT_HTIF
+	bool "chipyard_sim_exit() ends the run via HTIF tohost"
+	default y if UART_HTIF
+	depends on SOC_PENGUIN
+	help
+	  Needs an HTIF host (Spike, uart_tsi, the Chipyard testharness). When off (FPGA without a
+	  host), chipyard_sim_exit() prints "*** EXIT <code> ***" on the console and halts in a
+	  wfi loop.

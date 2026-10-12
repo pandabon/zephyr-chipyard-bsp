@@ -1,0 +1,64 @@
+# SPDX-License-Identifier: Apache-2.0
+
+if SOC_PENGUIN
+
+# Saturn VLEN = 256 (DLEN 128, ELEN 64): WithShuttleVectorUnit(256, 128, ...) in the
+# EE290SimConfig family (course tapeout repo, high confidence). That "penguin" == EE290SimConfig
+# is inferred. The per-thread vector save area is sized from this at compile time and soc.c
+# panics at boot if the hardware vlenb is larger.
+config RISCV_VECTOR_MAX_LEN
+	default 256
+
+# Eager V save/restore is the validated path on Saturn (see RISCV_V_DECOUPLED_LAZY help in
+# arch/riscv/Kconfig.isa).
+config RISCV_ISA_EXT_V_LAZY
+	default n
+
+# mtime / timebase = 500 kHz: WithPeripheryBusFrequency(500) also calls
+# WithTimebase(500 * 1e3) (chipyard ClockingFragments.scala:91-96, high confidence; the
+# pbus/1000 tick divider is rocket-chip code, inferred). The DT /cpus timebase-frequency
+# repeats this per board, and soc.c has a BUILD_ASSERT that the two agree.
+config SYS_CLOCK_HW_CYCLES_PER_SEC
+	default 50000 if CHIPYARD_FPGA_TA		# WithFPGAFrequency(50) -> WithTimebase(50e3), TA Configs.scala:88; generated DTS .dts:17
+	default 1000000 if CHIPYARD_FPGA_EMULATION	# DTSTimebase = 1e6 in the Chipyard VCU118 flow
+	default 500000
+
+# The SiFive UART is clocked by the 500 MHz PBUS: SYS_CLOCK_HW_CYCLES_PER_SEC *
+# RTC_CLOCK_DIVIDER_VALUE = 500 kHz * 1000 (soc.h). Derived, confidence M (divider inferred).
+config RTC_CLOCK_DIVIDER_VALUE
+	default 1000 if CHIPYARD_FPGA_TA		# 50 MHz PBUS / 50 kHz mtime = 1000; generated DTS pbus_clock = <50000000> (.dts:114-119), serial clocks = <&pbus_clock> (.dts:132)
+	default CHIPYARD_FPGA_PBUS_MHZ if CHIPYARD_FPGA_EMULATION	# 1 MHz mtime * N = N MHz PBUS
+	default 1000
+
+config RISCV_MACHINE_TIMER_SYSTEM_CLOCK_DIVIDER
+	default 0
+
+config RISCV_SOC_INTERRUPT_INIT
+	default y
+
+# Keep in sync with riscv,ndev in penguin.dtsi. The PLIC has one source (UART = source 1,
+# RC Plic.scala:113). Zephyr indexes the second-level ISR table by PLIC source id, so ids 0
+# and 1 are needed: MAX_IRQ_PER_AGGREGATOR = 2 and NUM_IRQS = 12 machine-level lines
+# (2ND_LVL_ISR_TBL_OFFSET) + 2 = 14. 2ND_LEVEL_INTERRUPT_BITS = 2 holds source + 1.
+config 2ND_LVL_ISR_TBL_OFFSET
+	default 12
+
+config 2ND_LVL_INTR_00_OFFSET
+	default 11
+
+config 2ND_LEVEL_INTERRUPT_BITS
+	default 2
+
+config MAX_IRQ_PER_AGGREGATOR
+	default 2
+
+config NUM_IRQS
+	default 14
+
+# No PMP: Shuttle has nPMPs = 0 (shuttle common/Parameters.scala:56, 68-69, high confidence),
+# so RISCV_PMP stays off (board defconfig) and PMP_SLOTS is not set.
+
+config TICKET_SPINLOCKS
+	default y
+
+endif # SOC_PENGUIN

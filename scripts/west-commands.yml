@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: Apache-2.0
+# West extension commands provided by this module (referenced from west.yml
+# `self: west-commands:`). Adds `west app ...`.
+west-commands:
+  - file: scripts/west_commands/app.py
+    commands:
+      - name: app
+        class: App
+        help: create, build, run and test apps on the Chipyard SoC (Zephyr front door)

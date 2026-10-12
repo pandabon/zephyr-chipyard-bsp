@@ -1,0 +1,70 @@
+/*
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Variant "vcu118": the whole Penguin SoC emulated on a Xilinx VCU118 (tapeout poster:
+ * "Verified bare metal workload correctness on Virtex Ultrascale VCU118 (Bare FPGA)",
+ * "MMIO & DRAM size re-configured").
+ *
+ * The Penguin-on-VCU118 Chipyard config is not in the lab repo, so the values below come from
+ * the generic Chipyard VCU118 flow (fpga/src/main/scala/vcu118/Configs.scala,
+ * WithVCU118Tweaks and WithDefaultPeripherals):
+ *   - UART (sifive,uart0) at 0x6400_0000, PLIC source 1 (sdboot platform.h UART_INT_BASE 1)
+ *     [generic, H]
+ *   - timebase 1 MHz (DTSTimebase = 1e6) [generic, H]
+ *   - all buses 100 MHz (WithFPGAFrequency(100)) [generic, H]
+ *   - DRAM at 0x8000_0000, size VCU118DDRSize (assumed 2 GiB; Zephyr describes 256 MiB, as
+ *     on the base board) [assumed]
+ *   - CLINT 0x0200_0000, PLIC 0x0C00_0000, scratchpad 0x0800_0000 and the core are kept from
+ *     penguin.dtsi; the poster says MMIO was re-configured, so they may have moved
+ *     [unverified]
+ *   - Atlas: penguin.dtsi enables npu@20000 for every variant. Whether Atlas is in the
+ *     emulated design is unknown, so hw_probe's Atlas section defaults off here
+ *     (PROBE_ATLAS) and the node is left enabled.
+ *
+ * Boot: sdboot loads a raw image to 0x8000_0000 and jumps there, or load over JTAG. There
+ * is no HTIF host, so the console is the UART and chipyard_sim_exit() prints
+ * "*** EXIT <code> ***" and halts.
+ */
+
+#include <chipyard/penguin.dtsi>
+
+/ {
+	chosen {
+		zephyr,console = &uart0;
+		zephyr,shell-uart = &uart0;
+		zephyr,sram = &ram0;
+	};
+};
+
+/* mtime / DTSTimebase = 1 MHz on the Chipyard VCU118 flow. Must equal
+ * CONFIG_SYS_CLOCK_HW_CYCLES_PER_SEC (soc Kconfig.defconfig sets it for
+ * CHIPYARD_FPGA_EMULATION).
+ */
+
+&{/cpus} {
+	timebase-frequency = <1000000>;
+};
+
+/* No HTIF host on an FPGA. */
+&htif {
+	status = "disabled";
+};
+
+/* The generic VCU118 UART is at 0x6400_0000, not 0x1002_0000. The node is replaced so the
+ * unit address matches. */
+/delete-node/ &uart0;
+
+&{/soc} {
+	uart0: serial@64000000 {
+		compatible = "sifive,uart0";
+		reg = <0x64000000 0x1000>;
+		reg-names = "control";
+		interrupt-parent = <&plic>;
+		interrupts = <1 1>;	/* PLIC source 1 (sdboot UART_INT_BASE), priority 1; inferred for Penguin */
+		current-speed = <115200>;
+		status = "okay";
+	};
+};
+
+/* VCU118DDRSize (fpga-shells) is assumed to be 2 GiB. The base board's 256 MiB is kept: it
+ * is enough for Zephyr and stays valid if the bitstream resizes DRAM. */

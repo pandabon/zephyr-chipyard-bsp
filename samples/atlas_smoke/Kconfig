@@ -1,0 +1,44 @@
+# SPDX-License-Identifier: Apache-2.0
+
+# The Atlas base and size values are fallbacks, used only when the devicetree has no enabled
+# ucb-bar,atlas node.
+
+mainmenu "Atlas smoke test"
+
+config ATLAS_SMOKE_IMEM_BASE
+	hex "Atlas IMEM base address"
+	default 0x00020000
+	help
+	  AtlasMemMap.imem, atlas-npu src/main/scala/atlas/scalar/ScalarCore.scala:39-42.
+
+config ATLAS_SMOKE_IMEM_SIZE
+	hex "Atlas IMEM size in bytes"
+	default 0x20000
+	help
+	  128 KiB (ScalarCore.scala:39-42).
+
+config ATLAS_SMOKE_CSR_BASE
+	hex "Atlas CSR block base address"
+	default 0x00040000
+	help
+	  AtlasMemMap.csr, ScalarCore.scala:44-48. Seven 32-bit registers at
+	  +0x00..+0x18 (diplomatic/memory/CSRFile.scala:7-18).
+
+config ATLAS_SMOKE_VMEM_BASE
+	hex "Atlas VMEM base address"
+	default 0x20000000
+	help
+	  AtlasMemMap.vmem, ScalarCore.scala:49-51 (1.5 MiB, 6 banks of 256 KiB).
+	  Kernels address VMEM by zero-based offset; the host adds this base.
+
+config ATLAS_SMOKE_POLL_LIMIT
+	int "Max status polls before declaring a kernel hung"
+	default 200000
+	help
+	  Each poll is one uncached CSR read. Kernels here run < 100 cycles.
+
+config ATLAS_SMOKE_VERIFY_IMEM
+	bool "Read IMEM back after loading it (core halted only)"
+	default y
+
+source "Kconfig.zephyr"

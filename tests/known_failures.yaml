@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: Apache-2.0
+# Scenarios expected to fail on the stock Zephyr fork. scripts/run_tests.py reports them
+# as XFAIL and flags XPASS when one starts passing; then delete the entry.
+# id is the scenario name from testcase.yaml.
+known_failures:
+  - id: arch.riscv.rvv.ctx_switch
+    reason: >-
+      A thread preempted by an IRQ has vl/vtype overwritten with e8,m8,VLMAX (V state
+      saved twice). 3-4 of 6 cases fail, depending on timing on Spike.
+    fixed_by: patches/zephyr/0005-riscv-v-make-vstate-save-idempotent.patch (not applied)
+  - id: arch.riscv.rvv.ctx_switch.lazy
+    reason: >-
+      The fork does not implement lazy V switching (arch/riscv/core/v.c); it crashes at
+      boot on the first compiler-emitted vector instruction.
+    fixed_by: no patch yet (needs lazy V trap path in the fork)
+  - id: plain_app.return3
+    reason: >-
+      Negative test (tests/plain_app): main() returns 3 and the exit shim must turn that
+      into a failing exit code. XFAIL is the expected result; XPASS means the shim is broken.

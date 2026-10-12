@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: Apache-2.0
+board:
+  name: chipyard_penguin
+  full_name: Chipyard Penguin (Shuttle + Saturn RVV)
+  vendor: chipyard
+  socs:
+    - name: penguin
+      variants:
+        - name: vcu118
+        - name: vcu118_ta

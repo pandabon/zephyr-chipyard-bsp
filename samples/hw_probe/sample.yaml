@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: Apache-2.0
+sample:
+  name: hw_probe
+tests:
+  # Spike run: the hardware-only sections (scratchpad, Atlas) are disabled.
+  sample.hw_probe.spike:
+    platform_allow: chipyard_penguin/penguin
+    extra_args: EXTRA_CONF_FILE=prj_spike.conf
+    tags: rvv
+    harness: console
+    harness_config:
+      type: one_line
+      regex:
+        - "hw_probe: PASS"

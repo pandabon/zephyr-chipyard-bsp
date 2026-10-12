@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: Apache-2.0
+# West manifest for the Chipyard Zephyr BSP workspace (SoC: penguin).
+#
+#   cd bringup && west init -l zephyr-chipyard-bsp && west update
+#
+# Zephyr comes from the ucb-bar fork, which carries the arch/riscv RVV context-switch and
+# POSIX patches that cannot live in a module. Everything SoC- and board-specific is in this repo.
+manifest:
+  remotes:
+    - name: ucb-bar
+      url-base: https://github.com/ucb-bar
+
+  projects:
+    - name: zephyr
+      remote: ucb-bar
+      # Tip of the 'penguinsoc' commits (RVV save/restore, HTIF flush, POSIX affinity); also on
+      # the ucb-bar/zephyr branch saturn-fork-wip.
+      revision: 852bb170cc5655577e9cb3a673e69e2e0c3b00c5
+      # Zephyr's west commands (build, flash, debug, twister, ...) come from the fork's
+      # scripts/west-commands.yml. No other fork dependency is fetched: the C library is the
+      # SDK's prebuilt picolibc (CONFIG_PICOLIBC_USE_TOOLCHAIN) and muriscv-nn is unused. For a
+      # dependency from the fork's west-riscv.yml (eigen_headers, xnnpack, executorch), add
+      # `import: {file: west-riscv.yml, name-allowlist: [<name>]}` here and run `west update`.
+      west-commands: scripts/west-commands.yml
+
+  self:
+    path: zephyr-chipyard-bsp
+    west-commands: scripts/west-commands.yml

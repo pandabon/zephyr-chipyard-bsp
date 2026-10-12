@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: Apache-2.0
+name: chipyard-bsp
+build:
+  cmake: .
+  kconfig: Kconfig
+  settings:
+    board_root: .
+    soc_root: .
+    dts_root: .
+    snippet_root: .
+
+runners:
+  - file: scripts/runners/uart_tsi.py
+  - file: scripts/runners/spike.py
