@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: Apache-2.0
+sample:
+  name: atlas_kernels
+tests:
+  # Needs Atlas hardware; Spike traps at the first CSR access, so only build it.
+  sample.penguin.atlas_kernels:
+    platform_allow: chipyard_penguin/penguin
+    tags: atlas hardware
+    build_only: true
+  # The TA's VCU118 variant (HTIF console, 50 kHz mtime). run_tests.py builds only the board
+  # it is given (--board chipyard_penguin/penguin/vcu118_ta).
+  sample.penguin.vcu118_ta.atlas_kernels:
+    platform_allow: chipyard_penguin/penguin/vcu118_ta
+    tags: atlas hardware
+    build_only: true

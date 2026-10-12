@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: Apache-2.0
+
+mainmenu "Atlas upstream host tests"
+
+config ATLAS_KERNELS_TIMEOUT_MCYCLES
+	int "Per-wait timeout in host mcycle ticks (millions)"
+	default 400
+	help
+	  How long the host waits for Atlas to signal "halted" (or dbg0 != 0 in alu_basic) before
+	  reporting TIMEOUT, writing execControl=0 and moving on. Counted in host mcycles, so
+	  400 M is ~4 s at 100 MHz and ~8 s at 50 MHz. The kernels run for at most a few
+	  million Atlas cycles.
+
+config ATLAS_KERNELS_RACE_TESTS
+	bool "Run the concurrent IMEM-write tests (optA end-JAL, lower-first)"
+	default y
+	help
+	  Both tests overwrite IMEM while Atlas runs a ~500000-iteration busy loop and need the
+	  host to finish ~30 MMIO accesses before it ends. A FAIL can come from a slow host link
+	  rather than broken hardware. Turn off to run only deterministic tests.
+
+config ATLAS_KERNELS_VMEM_VECTOR
+	bool "Run RVV (vector load/store) accesses to VMEM"
+	default y
+	help
+	  vmem_vector and the Saturn transform step of pause_resume use vle32/vse32 on the Atlas
+	  VMEM window. Turn off to test scalar access alone if a vector access hangs the bus.
+
+source "Kconfig.zephyr"
