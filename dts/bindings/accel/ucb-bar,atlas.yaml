@@ -1,0 +1,50 @@
+# SPDX-License-Identifier: Apache-2.0
+
+description: |
+  Atlas NPU: a memory-mapped TileLink device (not a hart, not RoCC).
+
+  Three fixed windows (reg-names, in this order):
+    imem  flat instruction memory, PBUS, 32-bit access, default 128 KiB @ 0x00020000
+    csr   control/status block, PBUS, 32-bit access, 4 KiB window (7 words used) @ 0x00040000
+    vmem  vector scratchpad, SBUS, 1..32 byte access, default 1.5 MiB @ 0x20000000
+
+  Sources (bringup-chipyard/generators/atlas-npu/src/main/scala/atlas/):
+    scalar/ScalarCore.scala   AtlasMemMap: imem/csr/vmem base and size
+    diplomatic/memory/CSRFile.scala   CSR register list (7 registers)
+    common/VmemParams.scala   bank count and bank size (size / numBanks)
+    diplomatic/top/AtlasTile.scala   bus attachment (PBUS/SBUS)
+
+  Chipyard emits no DTS node for Atlas, so the node is written by hand. There is no
+  "interrupts" property because the RTL has no interrupt output; completion is polled via the
+  status CSR. There is no DMA window: the DMA engine is a TileLink client driven only by
+  kernel instructions.
+
+  Example:
+
+    atlas: npu@20000 {
+        compatible = "ucb-bar,atlas";
+        reg = <0x00020000 0x00020000>,
+              <0x00040000 0x00001000>,
+              <0x20000000 0x00180000>;
+        reg-names = "imem", "csr", "vmem";
+        vmem-banks = <6>;
+    };
+
+compatible: "ucb-bar,atlas"
+
+include: base.yaml
+
+properties:
+  reg:
+    required: true
+
+  reg-names:
+    required: true
+    description: |
+      Exactly "imem", "csr", "vmem", in the same order as "reg".
+
+  vmem-banks:
+    type: int
+    description: |
+      Number of VMEM banks (bank size = vmem size / vmem-banks). The RTL default is 6 banks
+      of 256 KiB (VmemParams.scala).

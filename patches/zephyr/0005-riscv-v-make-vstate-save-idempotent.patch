@@ -1,0 +1,41 @@
+From: pandabon <pandabon@users.noreply.github.com>
+Subject: [PATCH] riscv: v: make vstate save idempotent (vl/vtype corruption)
+
+z_riscv_vstate_save_thread() saves v0..v31 with a bulk
+`vsetvli e8,m8` + vse8.v, which leaves the hart at vl=VLMAX,
+vtype=e8m8, and then marks MSTATUS.VS CLEAN (V stays enabled).
+
+A thread preempted by an interrupt is saved twice: once at IRQ entry
+(isr.S -> z_riscv_vstate_save) and again on the context switch
+(switch.S -> z_riscv_vstate_save_thread). The second save records the
+clobbered e8m8/VLMAX as the thread's vl/vtype, so when the thread
+resumes its vector ops run with the wrong element width and length.
+Vector register contents are unaffected.
+
+Found by zephyr-chipyard-bsp tests/arch/rvv/ctx_switch: time-slice
+preemption, semaphore wakeups from ISRs and FP+V threads all read back
+vl=0x100 (e8m8 VLMAX at VLEN 256) instead of their own setting.
+
+Fix: restore the thread's saved V CSRs at the end of the bulk save.
+
+NOT APPLIED. Proposed for the ucb-bar/zephyr fork (penguinsoc commits).
+---
+diff --git a/arch/riscv/core/v.c b/arch/riscv/core/v.c
+index 80a777d..7fd8c43 100644
+--- a/arch/riscv/core/v.c
++++ b/arch/riscv/core/v.c
+@@ -152,6 +152,14 @@ void z_riscv_vstate_save_thread(struct k_thread *thread)
+ 			: "=&r"(vl)
+ 			: "r"(save_to->vreg)
+ 			: "memory");
++		/* The bulk save above ran vsetvli e8,m8, leaving the hart at
++		 * vl=VLMAX, vtype=e8m8. VS is set CLEAN (not OFF) below, so V
++		 * stays accessible and this thread can be saved a second time
++		 * before it runs again (IRQ entry in isr.S, then the context
++		 * switch in switch.S). Restore the thread's own vl/vtype/vcsr
++		 * so a repeated save is idempotent instead of recording e8m8.
++		 */
++		z_riscv_vstate_csr_restore(save_to);
+ 	}
+ 	save_to->is_dirty = (mstatus_v != 0);
+ 

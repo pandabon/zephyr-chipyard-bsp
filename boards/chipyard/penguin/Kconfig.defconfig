@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: Apache-2.0
+
+if BOARD_CHIPYARD_PENGUIN
+
+config BUILD_OUTPUT_BIN
+	default n
+
+# Without this ztest idles after the last test; include/tc_util_user_override.h makes it end
+# the simulation with an exit code.
+config ZTEST_TC_UTIL_USER_OVERRIDE
+	default y
+
+endif # BOARD_CHIPYARD_PENGUIN

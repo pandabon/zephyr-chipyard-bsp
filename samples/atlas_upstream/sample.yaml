@@ -1,0 +1,89 @@
+# SPDX-License-Identifier: Apache-2.0
+# Build only, since Spike has no Atlas model. One scenario per upstream test and board
+# variant; run_tests.py builds only the board it is given, so the vcu118_ta ones SKIP by
+# default (use --board chipyard_penguin/penguin/vcu118_ta -f atlas_upstream). The 9 tests
+# whose golden headers need python torch are not listed (see tests.cmake).
+sample:
+  name: atlas_upstream
+common:
+  tags: atlas hardware atlas_upstream needs_path:TAPEOUT_CHIPYARD
+  build_only: true
+tests:
+  sample.penguin.atlas_upstream.atlas_alu_basic:
+    platform_allow: chipyard_penguin/penguin
+    extra_args: ATLAS_TEST=atlas_alu_basic
+  sample.penguin.vcu118_ta.atlas_upstream.atlas_alu_basic:
+    platform_allow: chipyard_penguin/penguin/vcu118_ta
+    extra_args: ATLAS_TEST=atlas_alu_basic
+  sample.penguin.atlas_upstream.saturn_atlas_vmem_smoke:
+    platform_allow: chipyard_penguin/penguin
+    extra_args: ATLAS_TEST=saturn_atlas_vmem_smoke
+  sample.penguin.vcu118_ta.atlas_upstream.saturn_atlas_vmem_smoke:
+    platform_allow: chipyard_penguin/penguin/vcu118_ta
+    extra_args: ATLAS_TEST=saturn_atlas_vmem_smoke
+  sample.penguin.atlas_upstream.saturn_atlas_pause_resume:
+    platform_allow: chipyard_penguin/penguin
+    extra_args: ATLAS_TEST=saturn_atlas_pause_resume
+  sample.penguin.vcu118_ta.atlas_upstream.saturn_atlas_pause_resume:
+    platform_allow: chipyard_penguin/penguin/vcu118_ta
+    extra_args: ATLAS_TEST=saturn_atlas_pause_resume
+  sample.penguin.atlas_upstream.saturn_atlas_pi0_slice:
+    platform_allow: chipyard_penguin/penguin
+    extra_args: ATLAS_TEST=saturn_atlas_pi0_slice
+  sample.penguin.vcu118_ta.atlas_upstream.saturn_atlas_pi0_slice:
+    platform_allow: chipyard_penguin/penguin/vcu118_ta
+    extra_args: ATLAS_TEST=saturn_atlas_pi0_slice
+  sample.penguin.atlas_upstream.saturn_atlas_buffered_optA_end_jal:
+    platform_allow: chipyard_penguin/penguin
+    extra_args: ATLAS_TEST=saturn_atlas_buffered_optA_end_jal
+  sample.penguin.vcu118_ta.atlas_upstream.saturn_atlas_buffered_optA_end_jal:
+    platform_allow: chipyard_penguin/penguin/vcu118_ta
+    extra_args: ATLAS_TEST=saturn_atlas_buffered_optA_end_jal
+  sample.penguin.atlas_upstream.saturn_atlas_buffered_lower_first:
+    platform_allow: chipyard_penguin/penguin
+    extra_args: ATLAS_TEST=saturn_atlas_buffered_lower_first
+  sample.penguin.vcu118_ta.atlas_upstream.saturn_atlas_buffered_lower_first:
+    platform_allow: chipyard_penguin/penguin/vcu118_ta
+    extra_args: ATLAS_TEST=saturn_atlas_buffered_lower_first
+  sample.penguin.atlas_upstream.saturn_atlas_buffered_optB_restart:
+    platform_allow: chipyard_penguin/penguin
+    extra_args: ATLAS_TEST=saturn_atlas_buffered_optB_restart
+  sample.penguin.vcu118_ta.atlas_upstream.saturn_atlas_buffered_optB_restart:
+    platform_allow: chipyard_penguin/penguin/vcu118_ta
+    extra_args: ATLAS_TEST=saturn_atlas_buffered_optB_restart
+  sample.penguin.atlas_upstream.saturn_atlas_vmem_3way_arb:
+    platform_allow: chipyard_penguin/penguin
+    extra_args: ATLAS_TEST=saturn_atlas_vmem_3way_arb
+  sample.penguin.vcu118_ta.atlas_upstream.saturn_atlas_vmem_3way_arb:
+    platform_allow: chipyard_penguin/penguin/vcu118_ta
+    extra_args: ATLAS_TEST=saturn_atlas_vmem_3way_arb
+  sample.penguin.atlas_upstream.saturn_atlas_4rung_2bank_arb:
+    platform_allow: chipyard_penguin/penguin
+    extra_args: ATLAS_TEST=saturn_atlas_4rung_2bank_arb
+  sample.penguin.vcu118_ta.atlas_upstream.saturn_atlas_4rung_2bank_arb:
+    platform_allow: chipyard_penguin/penguin/vcu118_ta
+    extra_args: ATLAS_TEST=saturn_atlas_4rung_2bank_arb
+  sample.penguin.atlas_upstream.saturn_atlas_vmem_dram_dual:
+    platform_allow: chipyard_penguin/penguin
+    extra_args: ATLAS_TEST=saturn_atlas_vmem_dram_dual
+  sample.penguin.vcu118_ta.atlas_upstream.saturn_atlas_vmem_dram_dual:
+    platform_allow: chipyard_penguin/penguin/vcu118_ta
+    extra_args: ATLAS_TEST=saturn_atlas_vmem_dram_dual
+  sample.penguin.atlas_upstream.saturn_atlas_dmem_sbus_dma:
+    platform_allow: chipyard_penguin/penguin
+    extra_args: ATLAS_TEST=saturn_atlas_dmem_sbus_dma
+  sample.penguin.vcu118_ta.atlas_upstream.saturn_atlas_dmem_sbus_dma:
+    platform_allow: chipyard_penguin/penguin/vcu118_ta
+    extra_args: ATLAS_TEST=saturn_atlas_dmem_sbus_dma
+  sample.penguin.atlas_upstream.saturn_atlas_8dma_rvv_vmem:
+    platform_allow: chipyard_penguin/penguin
+    extra_args: ATLAS_TEST=saturn_atlas_8dma_rvv_vmem
+  sample.penguin.vcu118_ta.atlas_upstream.saturn_atlas_8dma_rvv_vmem:
+    platform_allow: chipyard_penguin/penguin/vcu118_ta
+    extra_args: ATLAS_TEST=saturn_atlas_8dma_rvv_vmem
+  sample.penguin.atlas_upstream.saturn_atlas_8dma_rvv_vmem_nosaturn:
+    platform_allow: chipyard_penguin/penguin
+    extra_args: ATLAS_TEST=saturn_atlas_8dma_rvv_vmem_nosaturn
+  sample.penguin.vcu118_ta.atlas_upstream.saturn_atlas_8dma_rvv_vmem_nosaturn:
+    platform_allow: chipyard_penguin/penguin/vcu118_ta
+    extra_args: ATLAS_TEST=saturn_atlas_8dma_rvv_vmem_nosaturn

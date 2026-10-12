@@ -1,0 +1,48 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Variant "vcu118": whole Penguin SoC on a VCU118 (generic Chipyard VCU118 flow, see the DTS
+# header).
+#
+# Zephyr loads only this file for the variant, not chipyard_penguin_defconfig on top, so the
+# common lines below are a copy. Keep them in sync.
+
+# --- variant-specific -------------------------------------------------------
+# Selects 1 MHz mtime, UART input clock = CHIPYARD_FPGA_PBUS_MHZ, and chipyard_sim_exit()
+# without HTIF.
+CONFIG_CHIPYARD_FPGA_EMULATION=y
+
+# Bus clock of the bitstream; 100 is the generic WithVCU118Tweaks default.
+CONFIG_CHIPYARD_FPGA_PBUS_MHZ=100
+
+# Console is the sifive UART, not HTIF (no HTIF host on an FPGA).
+CONFIG_UART_HTIF=n
+CONFIG_UART_SIFIVE=y
+CONFIG_UART_SIFIVE_PORT_0=y
+
+# Flat binary for the sdboot SD image (scripts/mk_sdboot_image.sh) or a JTAG load.
+CONFIG_BUILD_OUTPUT_BIN=y
+
+# --- copied from chipyard_penguin_defconfig ---------------------------------
+CONFIG_SERIAL=y
+CONFIG_CONSOLE=y
+CONFIG_UART_CONSOLE=y
+CONFIG_PRINTK=y
+CONFIG_EARLY_CONSOLE=y
+CONFIG_REBOOT=y
+
+CONFIG_XIP=n
+CONFIG_RISCV_PMP=n
+CONFIG_PINCTRL=n
+
+CONFIG_FPU=y
+CONFIG_FPU_SHARING=y
+CONFIG_FLOAT_HARD=y
+
+# SYS_CLOCK_HW_CYCLES_PER_SEC is 1000000 here (soc/chipyard/penguin/Kconfig.defconfig).
+# 10000 ticks/s = 100 us = 100 mtime counts per tick.
+CONFIG_SYS_CLOCK_TICKS_PER_SEC=10000
+CONFIG_TIMING_FUNCTIONS=y
+
+CONFIG_STACK_SENTINEL=y
+CONFIG_IDLE_STACK_SIZE=1024
+CONFIG_SPEED_OPTIMIZATIONS=y

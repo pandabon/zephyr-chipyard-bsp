@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: Apache-2.0
+identifier: chipyard_penguin/penguin
+name: Chipyard Penguin (Shuttle + Saturn RVV)
+type: sim
+arch: riscv
+toolchain:
+  - zephyr
+ram: 262144
+simulation:
+  - name: custom
+    exec: spike
+testing:
+  ignore_tags:
+    - net
+    - bluetooth

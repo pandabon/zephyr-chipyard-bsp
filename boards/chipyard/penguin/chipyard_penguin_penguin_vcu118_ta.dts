@@ -1,0 +1,101 @@
+/*
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Variant "vcu118_ta": the Penguin RTL (EE290SimConfig) on a VCU118 as the TA built it:
+ * EE290VCU118Config in bringup-chipyard 245f2a9d, fpga/src/main/scala/vcu118/Configs.scala:85-91
+ *   WithoutSDIO ++ WithVCU118PeripheralUARTOnPMOD ++ WithFPGAFrequency(50)
+ *     ++ WithVCU118Tweaks ++ EE290SimConfig
+ * cited below as TA:Configs.scala:<line>.
+ *
+ * Unlike the "vcu118" variant (sdboot, UART console, 1 MHz mtime), this one keeps the HTIF
+ * console of the base board: the TA loads over UART-TSI and the TSI host proxies the console
+ * (WithVCU118UARTTSI, Configs.scala:51; testchipip.tsi.WithUARTTSIClient, Configs.scala:58).
+ * It differs from the base board in the clock (50 kHz mtime), the peripheral UART (moved to
+ * 0x6400_0000, disabled) and the DRAM size.
+ *
+ * Checked against the DTS Chipyard generates for this config
+ * (`make SUB_PROJECT=vcu118 CONFIG=EE290VCU118Config verilog`), cited as GEN:<line>, where GEN is
+ *   $BRINGUP_CHIPYARD/fpga/generated-src/chipyard.fpga.vcu118.
+ *   VCU118FPGATestHarness.EE290VCU118Config/<same name>.dts
+ * Confirmed: timebase 50 kHz (GEN:17,38), every bus clock 50 MHz (GEN:65-129), riscv,isa
+ * identical to penguin.dtsi (GEN:36), PLIC ndev 1 / max-priority 1 / contexts M=11,S=9
+ * (GEN:98-107), CLINT (GEN:71-76), UART at 0x64000000 with PLIC source 1 (GEN:131-138).
+ * Chipyard emits no node for the Atlas NPU; its windows come from the elaboration graph
+ * (see atlas below).
+ */
+
+#include <chipyard/penguin.dtsi>
+
+/* HTIF console through the TSI host, as on the base board. */
+/ {
+	chosen {
+		zephyr,console = &htif;
+		zephyr,shell-uart = &htif;
+		zephyr,sram = &ram0;
+	};
+};
+
+&htif {
+	status = "okay";
+};
+
+/* mtime / timebase = 50 kHz. WithFPGAFrequency(50) (TA:Configs.scala:88,112-119) includes
+ * WithPeripheryBusFrequency(50), which sets WithTimebase(50 * 1e3) (bringup-chipyard
+ * generators/chipyard/.../ClockingFragments.scala:92-93). It is leftmost of the timebase
+ * setters, so it beats WithSystemModifications' DTSTimebase = 1e6 (TA:Configs.scala:31) and
+ * EE290BaseConfig's 500 MHz. RTC divider = 50 MHz / 50 kHz = 1000 (rocket-chip
+ * subsystem/RTC.scala:20-21). Must equal CONFIG_SYS_CLOCK_HW_CYCLES_PER_SEC (soc
+ * Kconfig.defconfig keys it off CONFIG_CHIPYARD_FPGA_TA).
+ */
+&{/cpus} {
+	timebase-frequency = <50000>;
+};
+
+/* Peripheral UART. The chip has it at 0x1002_0000; the TA re-adds it at 0x6400_0000
+ * (TA:Configs.scala:69, UARTParams(address = 0x64000000)) on PMOD J52: chip RX = AT16,
+ * TX = AV15, LVCMOS18, pull-up on RX (TA HarnessBinders.scala:45-56). It sits on the PBUS
+ * (rocket-chip-blocks UART.scala:261), is "sifive,uart0" (UART.scala:111) with one
+ * interrupt (UART.scala:118), initBaudRate 115200 (UART.scala:64) and reset divisor
+ * 50 MHz / 115200 = 434 (UART.scala:269). PLIC source 1 is the only interrupt device
+ * (WithNExtTopInterrupts(0), AbstractConfig.scala:105; WithoutSDIO drops the SPI,
+ * Configs.scala:97-100). Confirmed by GEN:131-138 (serial@64000000, interrupts = <1>) and
+ * GEN:114-129 (pbus_clock = 50000000).
+ *
+ * Disabled because the console is HTIF and the PMOD cable may be absent. To use it as a
+ * second serial port set status = "okay" and CONFIG_UART_SIFIVE_PORT_0=y in an app overlay
+ * and conf; its clock is 50 MHz (soc.h: 50 kHz * 1000).
+ */
+/delete-node/ &uart0;
+
+&{/soc} {
+	uart0: serial@64000000 {
+		compatible = "sifive,uart0";
+		reg = <0x64000000 0x1000>;
+		reg-names = "control";
+		interrupt-parent = <&plic>;
+		interrupts = <1 1>;	/* PLIC source 1 (GEN:136), priority 1 (PLIC max, GEN:105) */
+		current-speed = <115200>;
+		status = "disabled";
+	};
+};
+
+/* DRAM. The board has 2 GiB at 0x8000_0000: ExtMem size = VCU118DDRSize (TA:Configs.scala:39),
+ * 0x40000000 * 2 in fpga-shells VCU118NewShell.scala:305 (SerialTL removed,
+ * TA:Configs.scala:40). Confirmed by the generated DTS, memory@80000000
+ * reg = <0x80000000 0x80000000> (GEN:52-55), and memmap.json.
+ * ram0 stays at 256 MiB as on the base board. Atlas test buffers live at 0x9000_0000, the end
+ * of ram0 (see penguin.dtsi), and a larger ram0 would let the heap and linker grow into
+ * them. Raise reg to <0x80000000 0x80000000> only for an app that needs the memory and
+ * does not use those buffers.
+ */
+
+/* Atlas NPU (node `atlas` in penguin.dtsi). Chipyard emits no DTS node or memmap.json
+ * entry for it, but the elaboration graph (<config>.chiptop0.graphml, bringup-chipyard
+ * 245f2a9d) lists the three atlasTile windows, identical to penguin.dtsi:
+ *   vmem  AddressSet(0x20000000,0xfffff) + (0x20100000,0x7ffff) = 1.5 MiB  (graphml:10090)
+ *   imem  AddressSet(0x20000,0x1ffff) = 128 KiB                             (graphml:10174)
+ *   csr   AddressSet(0x40000,0xfff)   = 4 KiB                               (graphml:10187)
+ * The 64 KiB scratchpad memory@8000000 is status = "disabled" in the generated DTS (GEN:47-51),
+ * Chipyard's way of hiding it from Linux, but memmap.json lists it as a real, coherent,
+ * executable region, so spad0 in penguin.dtsi stays.
+ */

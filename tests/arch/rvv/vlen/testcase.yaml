@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: Apache-2.0
+tests:
+  arch.riscv.rvv.vlen:
+    filter: CONFIG_RISCV_ISA_EXT_V
+    harness: ztest
+    integration_platforms:
+      - chipyard_penguin/penguin

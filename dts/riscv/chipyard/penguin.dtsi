@@ -1,0 +1,192 @@
+/*
+ * Chipyard "penguin" SoC: Shuttle + Saturn RVV.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Sources: the course tapeout repo T/ = $TAPEOUT_CHIPYARD (HEAD 48c3a7d1) and
+ * RC/ = T/generators/rocket-chip/src/main/scala. The taped-out config is EE290TapeoutConfig
+ * (T/README.md:69-83, T/generators/chipyard/src/main/scala/config/EE290Configs.scala:12-19).
+ * Tags: [R] read in source, [I] inferred, H high confidence.
+ *
+ * No DTS elaborated for EE290TapeoutConfig is available. The real one is in the BootROM:
+ * dump 64 KiB at 0x10000 on silicon and `dtc -I dtb` it (testchipip bootrom.S:63-64).
+ */
+
+/dts-v1/;
+
+/ {
+	#address-cells = <1>;
+	#size-cells = <1>;
+	compatible = "ucb-bar,penguin";
+	model = "ucb-bar,penguin";
+
+	cpus {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		/* mtime rate: WithPeripheryBusFrequency(500) -> WithTimebase(500e3)
+		 * (ClockingFragments.scala:91-96, H). mtime is divided down from the CBUS clock by a
+		 * static divider of 500 MHz / 500 kHz = 1000 (RC/subsystem/RTC.scala:17-31 [R]), so
+		 * mtime = f_CBUS / 1000: 500 kHz only if the uncore clock really is 500 MHz.
+		 * Measure with samples/hw_probe. Must equal CONFIG_SYS_CLOCK_HW_CYCLES_PER_SEC.
+		 */
+		timebase-frequency = <500000>;
+
+		/* One Shuttle hart, hartid 0: WithNShuttleCores(1) (chipyard AtlasConfigs.scala:33,44;
+		 * shuttle Configs.scala:14-37), H. Atlas is a TL peripheral, not a hart. For more
+		 * harts add cpu@N + hlicN and extend the PLIC/CLINT/mtimer interrupts-extended lists.
+		 */
+		cpu0: cpu@0 {
+			device_type = "cpu";
+			reg = <0>;
+			status = "okay";
+			compatible = "ucb-bar,shuttle", "riscv";
+			/* The string rocket-chip's generator emits for Shuttle + Saturn
+			 * (RC/tile/BaseTile.scala:106-145) [R], parameter values [I]. It has no
+			 * "_" between "v" and "zicsr", no zicntr (commented out in the generator;
+			 * rdtime is not implemented) and lists zihpm although nPerfCounters = 0.
+			 * It is not a valid GCC -march; Zephyr's -march comes from the selects in
+			 * soc/chipyard/penguin/Kconfig. The hart also has S/U modes and Sv39
+			 * (RC/tile/Core.scala:64), but Zephyr runs in M-mode and its riscv,cpus
+			 * binding has no use for mmu-type.
+			 */
+			riscv,isa = "rv64imafdcbvzicsr_zifencei_zihpm_zvl256b_zve64d_zvfh_zfh_zba_zbb_zbs_zvbb_zvfofp8min_zfbfmin_zvfbfmin_zvfbfa";
+
+			hlic0: interrupt-controller {
+				compatible = "riscv,cpu-intc";
+				#address-cells = <0>;
+				#interrupt-cells = <1>;
+				interrupt-controller;
+			};
+		};
+	};
+
+	/* DRAM base 0x80000000 (BootAddrReg default, testchipip BootAddrReg.scala:13 [R]).
+	 * DRAM is cacheable and coherent via the TileLink broadcast hub (RC/tilelink/
+	 * Broadcast.scala:54-75); the SerialTL windows at 0x4000_0000 (1 GiB) and
+	 * 0x8_8000_0000 (30 GiB) are uncached. The size is a choice: the sim config maps
+	 * 64 GiB (WithExtMemSize(0x10_0000_0000), AtlasConfigs.scala:148, H), the tapeout chip
+	 * sees a 32 GiB window (l.59-62) and the FPGA host provides 16 GiB (l.123). 256 MiB is
+	 * enough for Zephyr and fits #address-cells = <1>.
+	 *
+	 * Upstream Atlas host tests keep their DRAM data at ATLAS_DRAM_BASE = 0x9000_0000
+	 * (T/tests/atlas_mmio.h:22-26), the end of this node. Keep Atlas buffers at or above it
+	 * so the linker and heap cannot grow into them.
+	 */
+	ram0: memory@80000000 {
+		device_type = "memory";
+		reg = <0x80000000 0x10000000>;
+	};
+
+	/* 64 KiB MBUS scratchpad at 0x0800_0000 (chipyard AbstractConfig.scala:120-121, H,
+	 * inherited by EE290SimConfig), exposed as the linker region "SCRATCHPAD". Spike does not
+	 * model it, so accesses fault there. Coherence with Atlas DMA/Saturn is unknown.
+	 */
+	spad0: memory@8000000 {
+		compatible = "zephyr,memory-region", "mmio-sram";
+		reg = <0x08000000 0x10000>;
+		zephyr,memory-region = "SCRATCHPAD";
+	};
+
+	htif: htif {
+		compatible = "ucb,htif";
+		label = "HTIF_UART";
+		status = "disabled";
+	};
+
+	soc {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		compatible = "simple-bus";
+		ranges;
+
+		/* CLINT 0x0200_0000, 64 KiB, CBUS [R] (RC/devices/tilelink/CLINT.scala:25,31-33,84-101):
+		 * msip hart h at 4*h, mtimecmp hart h at 0x4000 + 8*h, mtime at 0xBFF8. mtime resets
+		 * to 0 and counts rtcTick only (see the timebase note). mtimecmp has no reset value
+		 * (CLINT.scala:75), so MTIP may be spuriously asserted on silicon until software
+		 * writes it. Zephyr's riscv_machine_timer writes it in PRE_KERNEL_2 before
+		 * irq_enable(), and the BootROM enables only MSIP (bootrom.S:34-36). Anything that
+		 * enables MTIE earlier must write mtimecmp first.
+		 */
+		clint: clint@2000000 {
+			compatible = "sifive,clint0";
+			reg = <0x2000000 0x10000>;
+			interrupts-extended = <&hlic0 3 &hlic0 7>;
+		};
+
+		mtimer: timer@200bff8 {
+			compatible = "riscv,machine-timer";
+			interrupts-extended = <&hlic0 7>;
+			reg = <0x200bff8 0x8 0x2004000 0x8>;
+			reg-names = "mtime", "mtimecmp";
+		};
+
+		/* PLIC 0x0C00_0000, 64 MiB [R] (RC/devices/tilelink/Plic.scala:49-68). ndev = 1
+		 * source (UART only; WithNExtTopInterrupts(0)). Max priority is min(7, ndev) rounded
+		 * up to a bit mask = 1 (Plic.scala:68,113-115), so priority and threshold are one bit
+		 * wide and a priority above 1 is stored as 0, disabling the source. Zephyr's
+		 * riscv_plic_set_priority() clamps to riscv,max-priority. Context 0 = M, 1 = S. The
+		 * gateway is level-triggered.
+		 *
+		 * Zephyr's driver (intc_plic.c) treats ndev as a count including source 0: nr_irqs =
+		 * MIN(ndev, MAX_IRQ_PER_AGGREGATOR) and the ISR rejects local_irq >= nr_irqs, so with
+		 * the true ndev = 1 the UART (source 1) is rejected as spurious. The console is
+		 * HTIF, so nothing uses UART IRQs yet. To use them set ndev = <2> (absent sources read
+		 * 0) or fix the driver; see README.md, Known issues.
+		 */
+		plic: interrupt-controller@c000000 {
+			compatible = "sifive,plic-1.0.0";
+			reg = <0x0c000000 0x04000000>;
+			interrupts-extended = <&hlic0 11 &hlic0 9>;
+			interrupt-controller;
+			#address-cells = <0>;
+			#interrupt-cells = <2>;
+			riscv,max-priority = <1>;
+			riscv,ndev = <1>;	/* keep in sync with the IRQ Kconfig in soc/.../Kconfig.defconfig */
+		};
+
+		/* UART0 0x1002_0000, sifive,uart0, PBUS, init 115200 baud (PeripheralFragments.scala:69
+		 * WithUART), PLIC source 1, its only input [R] (UART.scala:122,299-303). Reset divisor
+		 * is PBUS_freq / 115200 = 4340 at 500 MHz; txen/rxen reset to 0. The interrupt
+		 * priority cell is 1 because the PLIC priority is one bit wide.
+		 */
+		uart0: serial@10020000 {
+			compatible = "sifive,uart0";
+			reg = <0x10020000 0x1000>;
+			reg-names = "control";
+			interrupt-parent = <&plic>;
+			interrupts = <1 1>;	/* source 1, priority 1 (max) */
+			status = "disabled";
+		};
+
+		/* Taped-out devices without a Zephyr binding, so not described as nodes. All [R]
+		 * unless noted, on CBUS/PBUS:
+		 *   debug module      0x0000_0000 4 KiB (sifive,debug-013, JTAG DTM, 64-bit SBA;
+		 *                     RC/devices/debug/Debug.scala:112,142)
+		 *   boot-address-reg  0x0000_1000 4 KiB (resets to 0x8000_0000)
+		 *   error device      0x0000_3000 4 KiB (sifive,error0)
+		 *   BootROM           0x0001_0000 64 KiB (holds the real DTB)
+		 *   clock-gater       0x0010_0000 (reset 1 = tile clock on; tile reg probably at +0x4 [I])
+		 *   tile-reset-setter 0x0011_0000 (reset 0 = tile not held in reset)
+		 *   Tacit trace encoder 0x0300_0000 64 KiB, trace-sink DMA regs 0x0301_0000 4 KiB
+		 *                     (present in EE290TapeoutConfig)
+		 * Do not touch them from Zephyr unless gating the tile.
+		 */
+
+		/* Atlas NPU: a TileLink peripheral with no IRQ output. Chipyard emits no DTS node for
+		 * it, so this one is hand-written from AtlasMemMap in bringup-chipyard/generators/
+		 * atlas-npu/src/main/scala/atlas/scalar/ScalarCore.scala:39-51 [R]: imem 0x20000
+		 * 128 KiB and csr 0x40000 (4 KiB window, 7 words) on the PBUS, vmem 0x2000_0000
+		 * 1.5 MiB (6 x 256 KiB banks) on the SBUS. The unit address is the first reg (imem).
+		 * csr starts where imem ends: adjacent, not overlapping.
+		 */
+		atlas: npu@20000 {
+			compatible = "ucb-bar,atlas";
+			reg = <0x00020000 0x00020000>,
+			      <0x00040000 0x00001000>,
+			      <0x20000000 0x00180000>;
+			reg-names = "imem", "csr", "vmem";
+			vmem-banks = <6>;
+			status = "okay";
+		};
+	};
+};

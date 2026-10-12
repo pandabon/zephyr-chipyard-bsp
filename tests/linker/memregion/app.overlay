@@ -1,0 +1,16 @@
+/*
+ * Stand-in scratchpad: the top 64 KiB of DRAM as a separate zephyr,memory-region node.
+ * The real scratchpad (spad0 at 0x0800_0000, penguin.dtsi) is described the same way, but
+ * Spike does not model that address.
+ */
+&ram0 {
+	reg = <0x80000000 0x0fff0000>;	/* 256 MiB - 64 KiB */
+};
+
+/ {
+	fake_scratch: memory@8fff0000 {
+		compatible = "zephyr,memory-region", "mmio-sram";
+		reg = <0x8fff0000 0x10000>;
+		zephyr,memory-region = "FAKE_SCRATCH";
+	};
+};

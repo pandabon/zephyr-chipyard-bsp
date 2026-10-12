@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: Apache-2.0
+# Tests for cmake/plain_app. The fixtures are directories without a CMakeLists.txt;
+# PLAIN_APP_DIR (relative to this dir) picks one.
+common:
+  arch_allow: riscv
+  tags: plain_app
+tests:
+  plain_app.return0:
+    # C, C++, include/ and prj.conf; main() returns 0
+    extra_args: -DPLAIN_APP_DIR=fixtures/pass
+  plain_app.return3:
+    # Negative test: main() returns 3 and the run must fail with exit code 3. Listed in
+    # tests/known_failures.yaml, so the runner reports XFAIL.
+    extra_args: -DPLAIN_APP_DIR=fixtures/fail

@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: Apache-2.0
+common:
+  filter: CONFIG_RISCV_ISA_EXT_V and CONFIG_FPU
+  harness: ztest
+  integration_platforms:
+    - chipyard_penguin/penguin
+tests:
+  arch.riscv.rvv.ctx_switch:
+    tags: rvv
+  # Lazy V switching. The fork has no lazy V trap path (arch/riscv/core/v.c), so this
+  # variant is expected to fail: the first compiler-emitted vector instruction (in vprintk)
+  # traps as illegal and the kernel crashes before ztest starts.
+  arch.riscv.rvv.ctx_switch.lazy:
+    tags: rvv
+    extra_configs:
+      - CONFIG_RISCV_ISA_EXT_V_LAZY=y

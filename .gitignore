@@ -1,0 +1,4 @@
+# Only README.md is tracked among docs; un-ignore other paths below if needed.
+*.md
+*.rst
+!/README.md

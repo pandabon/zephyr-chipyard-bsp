@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: Apache-2.0
+
+description: UCB-BAR Shuttle superscalar in-order RISC-V core
+
+compatible: "ucb-bar,shuttle"
+
+include: riscv,cpus.yaml

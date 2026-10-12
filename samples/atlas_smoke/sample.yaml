@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: Apache-2.0
+sample:
+  name: atlas_smoke
+tests:
+  # Needs Atlas hardware; Spike traps at the first CSR access, so only build it.
+  sample.penguin.atlas_smoke:
+    platform_allow: chipyard_penguin/penguin
+    tags: atlas hardware
+    build_only: true

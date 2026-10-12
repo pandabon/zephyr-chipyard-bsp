@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: Apache-2.0
+sample:
+  name: hello_rvv
+tests:
+  sample.penguin.hello_rvv:
+    platform_allow: chipyard_penguin/penguin
+    tags: rvv
+    harness: console
+    harness_config:
+      type: one_line
+      regex:
+        - "hello_rvv: PASS"

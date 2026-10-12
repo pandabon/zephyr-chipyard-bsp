@@ -1,0 +1,43 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Variant "vcu118_ta": Penguin RTL (EE290SimConfig) on a VCU118, as the TA's
+# EE290VCU118Config (bringup-chipyard 245f2a9d). See the DTS header.
+#
+# Zephyr loads only this file for the variant, not chipyard_penguin_defconfig on top, so the
+# common lines below are a copy. Keep them in sync.
+
+# --- variant-specific -------------------------------------------------------
+# Selects 50 kHz mtime and a 50 MHz UART clock.
+CONFIG_CHIPYARD_FPGA_TA=y
+
+# The console is HTIF through the UART-TSI host, as on the base board. The peripheral UART
+# at 0x6400_0000 is disabled in the DTS.
+CONFIG_UART_HTIF=y
+CONFIG_UART_SIFIVE_PORT_0=n
+
+# --- copied from chipyard_penguin_defconfig ---------------------------------
+CONFIG_SERIAL=y
+CONFIG_CONSOLE=y
+CONFIG_UART_CONSOLE=y
+CONFIG_PRINTK=y
+CONFIG_EARLY_CONSOLE=y
+CONFIG_REBOOT=y
+
+CONFIG_XIP=n
+CONFIG_RISCV_PMP=n
+CONFIG_PINCTRL=n
+
+CONFIG_FPU=y
+CONFIG_FPU_SHARING=y
+CONFIG_FLOAT_HARD=y
+
+# mtime is 50 kHz (SYS_CLOCK_HW_CYCLES_PER_SEC=50000, soc Kconfig.defconfig) and the tick
+# rate must divide it. 1000 ticks/s = 50 mtime counts per tick (20 us each). The base
+# board's 10000 would leave 5 counts per tick, and timer reprogramming would dominate on the
+# 50 MHz core.
+CONFIG_SYS_CLOCK_TICKS_PER_SEC=1000
+CONFIG_TIMING_FUNCTIONS=y
+
+CONFIG_STACK_SENTINEL=y
+CONFIG_IDLE_STACK_SIZE=1024
+CONFIG_SPEED_OPTIMIZATIONS=y

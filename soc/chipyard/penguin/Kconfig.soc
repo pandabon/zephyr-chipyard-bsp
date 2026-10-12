@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: Apache-2.0
+
+config SOC_PENGUIN
+	bool
+	help
+	  Chipyard "penguin" SoC: Shuttle core(s) with a Saturn RVV unit.
+
+config SOC
+	default "penguin" if SOC_PENGUIN
+
+# The fork's arch/riscv/Kconfig.isa lost the Zba/Zbb/Zbs symbols (the Zbs help text is
+# appended to ZVFBFMIN), but cmake/compiler/gcc/target_riscv.cmake still tests
+# CONFIG_RISCV_ISA_EXT_ZBA/ZBB/ZBS to build -march. Declaring them here restores that without
+# changing the fork.
+config RISCV_ISA_EXT_ZBA
+	bool
+config RISCV_ISA_EXT_ZBB
+	bool
+config RISCV_ISA_EXT_ZBS
+	bool

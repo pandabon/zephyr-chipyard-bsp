@@ -1,0 +1,100 @@
+From: pandabon <pandabon@users.noreply.github.com>
+Subject: [PATCH] boards: spike, chipyard: use schema-valid twister type/simulation
+
+spike_riscv64.yaml declares `type: spike` and `simulation: - name: spike`,
+neither of which the twister platform schema accepts
+(scripts/schemas/twister/platform-schema.yaml). Twister validates every
+board it discovers, so any `west twister` run in a workspace containing
+this board aborts with "Schema validation failed", even for other boards.
+
+Use the schema's existing values: spike_riscv64 becomes `type: sim` with
+`simulation: custom` / `exec: spike`; the chipyard_* boards (real chips,
+`type: chipyard`, `simulation: chipyard`) become `type: mcu` with the invalid
+simulation entry dropped, i.e. hardware boards (twister builds them only).
+
+NOT APPLIED. Proposed for the ucb-bar/zephyr fork; apply with
+  git -C zephyr apply zephyr-chipyard-bsp/patches/zephyr/0004-boards-spike-fix-twister-platform-schema.patch
+---diff --git a/boards/chipyard/arty/chipyard_arty.yaml b/boards/chipyard/arty/chipyard_arty.yaml
+index 5f2eee6..fa6467c 100644
+--- a/boards/chipyard/arty/chipyard_arty.yaml
++++ b/boards/chipyard/arty/chipyard_arty.yaml
+@@ -1,8 +1,6 @@
+ identifier: chipyard_arty
+ name: Chipyard Generated RISCV SoCs 
+-type: chipyard 
+-simulation:
+-  - name: chipyard
++type: mcu
+ arch: riscv
+ toolchain:
+   - zephyr
+diff --git a/boards/chipyard/cygnus/chipyard_cygnus.yaml b/boards/chipyard/cygnus/chipyard_cygnus.yaml
+index 7b9100d..0b79a85 100644
+--- a/boards/chipyard/cygnus/chipyard_cygnus.yaml
++++ b/boards/chipyard/cygnus/chipyard_cygnus.yaml
+@@ -1,8 +1,6 @@
+ identifier: chipyard_cygnus
+ name: Chipyard Generated RISCV SoCs 
+-type: chipyard 
+-simulation:
+-  - name: chipyard
++type: mcu
+ arch: riscv
+ toolchain:
+   - zephyr
+diff --git a/boards/chipyard/dsp24/chipyard_dsp24.yaml b/boards/chipyard/dsp24/chipyard_dsp24.yaml
+index 2504599..96800da 100644
+--- a/boards/chipyard/dsp24/chipyard_dsp24.yaml
++++ b/boards/chipyard/dsp24/chipyard_dsp24.yaml
+@@ -1,6 +1,6 @@
+ identifier: chipyard_dsp24
+ name: DSP24 SoC from Berkeley Tapeout Class
+-type: chipyard 
++type: mcu
+ arch: riscv
+ toolchain:
+   - zephyr
+diff --git a/boards/chipyard/kodiak/chipyard_kodiak.yaml b/boards/chipyard/kodiak/chipyard_kodiak.yaml
+index a56735e..db355d3 100644
+--- a/boards/chipyard/kodiak/chipyard_kodiak.yaml
++++ b/boards/chipyard/kodiak/chipyard_kodiak.yaml
+@@ -1,8 +1,6 @@
+ identifier: chipyard_kodiak
+ name: Chipyard Generated RISCV SoCs 
+-type: chipyard 
+-simulation:
+-  - name: chipyard
++type: mcu
+ arch: riscv
+ toolchain:
+   - zephyr
+diff --git a/boards/chipyard/riscv64/chipyard_riscv64.yaml b/boards/chipyard/riscv64/chipyard_riscv64.yaml
+index 0dfd5dd..0748d5a 100644
+--- a/boards/chipyard/riscv64/chipyard_riscv64.yaml
++++ b/boards/chipyard/riscv64/chipyard_riscv64.yaml
+@@ -1,8 +1,6 @@
+ identifier: chipyard_riscv64
+ name: Chipyard Generated RISCV SoCs 
+-type: chipyard 
+-simulation:
+-  - name: chipyard
++type: mcu
+ arch: riscv
+ toolchain:
+   - zephyr
+diff --git a/boards/spike/riscv64/spike_riscv64.yaml b/boards/spike/riscv64/spike_riscv64.yaml
+index 42b2342..a369605 100644
+--- a/boards/spike/riscv64/spike_riscv64.yaml
++++ b/boards/spike/riscv64/spike_riscv64.yaml
+@@ -1,8 +1,9 @@
+ identifier: spike_riscv64
+ name: Spike Emulation for RISC-V 64-bit
+-type: spike
++type: sim
+ simulation:
+-  - name: spike
++  - name: custom
++    exec: spike
+ arch: riscv
+ toolchain:
+   - zephyr
