@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
-"""Build and run the testcase.yaml/sample.yaml scenarios on Spike (`make test`).
+"""Simple Zephyr test runner for this BSP (builds + runs on Spike).
 
-A small alternative to `west twister`, which the stock Spike board YAML breaks (see
-patches/zephyr/0004). `--list` shows the scenarios. Needs west, spike and the Zephyr SDK
-on PATH.
+Fallback/simple path next to `west twister` (`make test` calls it). Run `--help` for flags,
+`--list` to see scenarios. Needs west and the Zephyr SDK on PATH (see README.md). Spike is
+optional: without it every scenario that needs to run is only built and reported BUILT
+(one notice at the start), see --build-only.
 """
 import argparse
 import concurrent.futures as cf
 import json
 import os
 import re
+import shutil
 import signal
 import subprocess
 import sys
@@ -21,6 +23,8 @@ import yaml
 
 REPO = os.path.realpath(os.path.join(os.path.dirname(__file__), ".."))
 PASS, FAIL, SKIP, XFAIL, XPASS = "PASS", "FAIL", "SKIP", "XFAIL", "XPASS"
+# BUILT = built fine but NOT run (Spike absent, or --build-only). Not a pass, not a failure.
+BUILT = "BUILT"
 
 
 # ---------------------------------------------------------------- discovery
@@ -33,10 +37,14 @@ def as_list(v):
 
 
 def discover(root):
-    """Yield one scenario dict per entry under tests: in testcase.yaml/sample.yaml."""
-    for sub in ("tests", "samples"):
+    """Yield one scenario dict per entry under tests: in testcase.yaml/sample.yaml.
+
+    The BSP itself keeps scenarios under tests/, samples/ and external/. Any other root (an app
+    repo, see --root) is searched whole, minus hidden and build folders."""
+    subs = ("tests", "samples", "external") if os.path.realpath(root) == REPO else (".",)
+    for sub in subs:
         for dp, dn, fn in os.walk(os.path.join(root, sub)):
-            dn.sort()
+            dn[:] = sorted(d for d in dn if not d.startswith(".") and d not in ("build", "__pycache__"))
             for f in ("testcase.yaml", "sample.yaml"):
                 if f not in fn:
                     continue
@@ -72,7 +80,7 @@ def read_config(builddir):
 
 def eval_filter(expr, cfg):
     """Evaluate a twister-style filter (CONFIG_X and not CONFIG_Y, ==, !=).
-    Unset symbols are "" and y is True. dt_* functions are not supported."""
+    Unset symbols are False/"" ; y is True. Not supported: dt_* functions."""
     class Cfg(dict):
         def __missing__(self, k):
             return ""
@@ -84,11 +92,13 @@ def eval_filter(expr, cfg):
     return bool(eval(expr, {"__builtins__": {}}, env))  # trusted repo YAML
 
 
-# A scenario tagged `needs_path:<ENVVAR>` is SKIPped when that external checkout is absent.
-# (A tag, because twister rejects unknown keys.) Defaults match the sample's CMake.
+# Scenarios that read an external checkout carry a tag `needs_path:<ENVVAR>` in their
+# sample.yaml (a tag, because twister rejects unknown keys but accepts any tag). The
+# runner SKIPs them with a reason instead of letting the build FAIL when the checkout is
+# absent. Add a row here to guard another dependency. No default location: the variable (or the
+# sample's -D) must be set, same as in the sample's CMake.
 EXTERNAL_PATHS = {
     "TAPEOUT_CHIPYARD": dict(
-        default=os.path.join(os.path.expanduser("~"), "toolsB", "tapeout-chipyard"),
         marker=os.path.join("tests", "atlas_mmio.h"),
         what="the course tapeout repo (Atlas/Saturn host tests)"),
 }
@@ -101,7 +111,7 @@ def missing_external(s):
             continue
         var = tag.split(":", 1)[1]
         info = EXTERNAL_PATHS.get(var, {})
-        path = os.environ.get(var) or info.get("default", "")
+        path = os.environ.get(var, "")
         marker = info.get("marker", "")
         if not path or not os.path.exists(os.path.join(path, marker)):
             return ("needs %s: set %s=<checkout> (looked in %r for %s)"
@@ -110,6 +120,8 @@ def missing_external(s):
 
 
 def static_skip(s, board):
+    if s.get("skip"):  # twister key: never build (the reason is in the scenario's comment/tags)
+        return "skip: true in the scenario (tags: %s)" % (" ".join(s["tags"]) or "-")
     pa = as_list(s.get("platform_allow"))
     if pa and board not in pa and board.split("/")[0] not in pa:
         return "platform_allow does not list %s" % board
@@ -118,22 +130,43 @@ def static_skip(s, board):
     return None
 
 
+# ---------------------------------------------------------------- spike
+def find_spike():
+    """Same lookup order as cmake/spike.cmake: $SPIKE, else `spike` on PATH. Return path or None."""
+    return shutil.which(os.environ.get("SPIKE") or "spike")
+
+
 # ---------------------------------------------------------------- west helpers
+def west_out(*args):
+    """Run `west <args>`; return its stripped output, or '' if west fails or is absent."""
+    try:
+        return subprocess.check_output(["west", *args], text=True, stderr=subprocess.DEVNULL).strip()
+    except (subprocess.CalledProcessError, OSError):
+        return ""
+
+
+def west_topdir():
+    """The west workspace (folder with .west/); falls back to the parent of this checkout."""
+    return west_out("topdir") or os.path.dirname(REPO)
+
+
 def detect_modules(override):
+    """Value for -DZEPHYR_MODULES, or None when west already knows this checkout.
+
+    West knows it when it is the manifest repository itself (the BSP's own workspace) or a west
+    project named chipyard-bsp (an app repo that imports the BSP). Only a different checkout
+    (e.g. a git worktree under review) needs the override, or Zephyr would build the wrong code."""
     if override:
         return override
-    try:
-        mf = subprocess.check_output(["west", "manifest", "--path"], text=True).strip()
-        manifest_dir = os.path.dirname(os.path.realpath(mf))
-        if manifest_dir == REPO:
+    known = [west_out("list", "-f", "{abspath}", name).splitlines()[:1] for name in ("manifest", "chipyard-bsp")]
+    for k in known:
+        if k and os.path.realpath(k[0]) == REPO:
             return None
-        return REPO
-    except (subprocess.CalledProcessError, OSError):
-        return None
+    return REPO if any(known) else None
 
 
 def run_cmd(cmd, log, timeout, env=None):
-    """Run cmd with output to log; kill the whole process group on timeout."""
+    """Run cmd, tee to log file, kill whole process group on timeout."""
     with open(log, "w") as fh:
         p = subprocess.Popen(cmd, stdout=fh, stderr=subprocess.STDOUT,
                              start_new_session=True, env=env)
@@ -186,7 +219,7 @@ def run_one(s, a, modules):
     if modules:
         cmd.append("-DZEPHYR_MODULES=" + modules)
     cmd += ["-D" + c if not c.startswith("-D") else c for c in s["extra_configs"]]
-    # extra_args are bare VAR=value, as in twister
+    # twister-style extra_args are bare VAR=value (twister adds the -D)
     cmd += ["-D" + c if re.match(r"^\w+=", c) else c for c in s["extra_args"]]
     rc, to = run_cmd(cmd, os.path.join(bdir, "build.log"), a.build_timeout)
     r["build_s"] = round(time.time() - t0, 1)
@@ -206,8 +239,11 @@ def run_one(s, a, modules):
         if not ok:
             r.update(status=SKIP, detail="filter false: %s" % s["filter"])
             return r
-    if s.get("build_only"):  # e.g. Atlas, which Spike lacks
+    if s.get("build_only"):  # twister key: needs hardware the runner lacks (e.g. Atlas)
         r.update(status=PASS, detail="build only")
+        return r
+    if not a.run:  # Spike absent or --build-only: built is all we can say
+        r.update(status=BUILT, detail=a.no_run_reason)
         return r
     t1 = time.time()
     tmo = s.get("timeout", a.timeout)
@@ -234,7 +270,7 @@ def write_junit(path, results, board):
     suite = ET.Element("testsuite", name="zephyr-chipyard-bsp:" + board,
                        tests=str(len(results)),
                        failures=str(sum(r["status"] in (FAIL, XPASS_FAILS) for r in results)),
-                       skipped=str(sum(r["status"] in (SKIP, XFAIL) for r in results)))
+                       skipped=str(sum(r["status"] in (SKIP, XFAIL, BUILT) for r in results)))
     for r in results:
         tc = ET.SubElement(suite, "testcase", classname=r["path"], name=r["name"],
                            time=str(round(r["build_s"] + r["run_s"], 1)))
@@ -242,12 +278,12 @@ def write_junit(path, results, board):
             ET.SubElement(tc, "failure", message=r["detail"])
         elif r["status"] == XPASS:
             ET.SubElement(tc, "failure", message="XPASS: " + r["detail"])
-        elif r["status"] in (SKIP, XFAIL):
+        elif r["status"] in (SKIP, XFAIL, BUILT):
             ET.SubElement(tc, "skipped", message="%s: %s" % (r["status"], r["detail"]))
     ET.ElementTree(suite).write(path, encoding="utf-8", xml_declaration=True)
 
 
-XPASS_FAILS = XPASS  # JUnit counts XPASS as a failure; the exit code needs --strict-xpass
+XPASS_FAILS = XPASS  # XPASS only counted as failure in JUnit; exit code uses --strict-xpass
 
 
 def main():
@@ -258,20 +294,32 @@ def main():
     ap.add_argument("-j", "--jobs", type=int, default=max(1, (os.cpu_count() or 2) // 2),
                     help="parallel scenarios (build+run each)")
     ap.add_argument("--modules", help="explicit ZEPHYR_MODULES value (default: auto-detect)")
-    ap.add_argument("--known-failures", default=os.path.join(REPO, "tests", "known_failures.yaml"))
+    ap.add_argument("--root", default=REPO, metavar="DIR",
+                    help="scenario root: the folder whose sample.yaml/testcase.yaml files are run "
+                         "(default: this BSP). Use it to run an app repo's suite; "
+                         "known failures then default to <DIR>/known_failures.yaml")
+    ap.add_argument("--known-failures", default=None,
+                    help="known-failures YAML (default: <root>/known_failures.yaml, or tests/known_failures.yaml for the BSP)")
     ap.add_argument("--strict-xpass", action="store_true", help="XPASS fails the run")
-    ap.add_argument("--build-root", default=os.path.join(os.path.dirname(REPO), "build", "test-runner"))
+    ap.add_argument("--build-root", default=None,
+                    help="where builds and logs go (default: <west topdir>/build/test-runner)")
     ap.add_argument("--timeout", type=int, default=300, help="seconds per Spike run (default 300)")
     ap.add_argument("--build-timeout", type=int, default=900)
+    ap.add_argument("--build-only", action="store_true",
+                    help="build every scenario but do not run any (reported BUILT); implied, with a "
+                         "notice, when Spike is not found")
     ap.add_argument("--incremental", action="store_true", help="west -p auto instead of always")
     ap.add_argument("--junit", metavar="FILE")
     ap.add_argument("--json", metavar="FILE")
     ap.add_argument("--list", action="store_true", help="list scenarios and exit")
     a = ap.parse_args()
-    a.build_root = os.path.abspath(a.build_root)
+    a.build_root = os.path.abspath(a.build_root or os.path.join(west_topdir(), "build", "test-runner"))
     os.makedirs(a.build_root, exist_ok=True)
 
-    scen = list(discover(REPO))
+    a.root = os.path.realpath(a.root)
+    if a.known_failures is None:
+        a.known_failures = os.path.join(a.root, "known_failures.yaml" if a.root != REPO else "tests/known_failures.yaml")
+    scen = list(discover(a.root))
     if a.filter:
         scen = [s for s in scen if any(f in s["name"] or any(f in t for t in s["tags"])
                                        for f in a.filter)]
@@ -284,6 +332,14 @@ def main():
         for k in (yaml.safe_load(open(a.known_failures)) or {}).get("known_failures", []):
             known[k["id"]] = k
     modules = detect_modules(a.modules)
+    spike = find_spike()
+    a.run = spike is not None and not a.build_only
+    a.no_run_reason = "built, not run (--build-only)"
+    if spike is None and not a.build_only:
+        a.no_run_reason = "built, not run (Spike not found)"
+        print("NOTICE: Spike not found (looked for %r): scenarios that need to run are only BUILT, "
+              "not run. Set SPIKE=/path/to/spike or run setup with --with-spike to run them."
+              % (os.environ.get("SPIKE") or "spike"), flush=True)
     print("board=%s jobs=%d modules=%s scenarios=%d" %
           (a.board, a.jobs, modules or "(west default)", len(scen)), flush=True)
 
@@ -311,8 +367,9 @@ def main():
     for r in results:
         print("%-*s  %-6s %7.1f %6.1f  %s" % (w, r["name"], r["status"], r["build_s"],
                                               r["run_s"], r["detail"]))
-    cnt = {k: sum(r["status"] == k for r in results) for k in (PASS, FAIL, SKIP, XFAIL, XPASS)}
-    print("\n" + "  ".join("%s=%d" % kv for kv in cnt.items()))
+    cnt = {k: sum(r["status"] == k for r in results) for k in (PASS, FAIL, SKIP, XFAIL, XPASS, BUILT)}
+    # The summary line keeps its usual shape; BUILT=n is appended only when something was not run.
+    print("\n" + "  ".join("%s=%d" % kv for kv in cnt.items() if kv[0] != BUILT or kv[1]))
     print("logs: " + a.build_root)
     if a.json:
         json.dump({"board": a.board, "summary": cnt, "results": results},

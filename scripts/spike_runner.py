@@ -13,6 +13,7 @@ All openocd runner options still apply. Registered through `runners:` in
 zephyr/module.yml.
 """
 
+import shutil
 import signal
 import subprocess
 import threading
@@ -109,7 +110,10 @@ class SpikeBinaryRunner(OpenOcdBinaryRunner):
                 'See README.md, "Debugging".')
 
     def _start_spike(self):
-        self.require(self.spike)
+        if shutil.which(self.spike) is None:
+            raise RuntimeError(
+                f'Spike not found ({self.spike!r}): set SPIKE=/path/to/spike (then reconfigure) '
+                'or pass --spike=PATH, or run setup with --with-spike.')
         if self.elf_name is None:
             raise ValueError('Cannot debug; no .elf specified')
         cmd = [self.spike]

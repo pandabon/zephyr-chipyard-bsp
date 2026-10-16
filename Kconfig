@@ -1,3 +1,4 @@
 # SPDX-License-Identifier: Apache-2.0
 #
-# Module-level Kconfig goes here, e.g. rsource "drivers/Kconfig".
+# Module hook: Zephyr reads this file because zephyr/module.yml says `kconfig: Kconfig`.
+# Empty (no out-of-tree drivers yet); a driver would add `rsource "drivers/<name>/Kconfig"` here.

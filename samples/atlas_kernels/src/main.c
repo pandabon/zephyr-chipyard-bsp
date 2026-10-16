@@ -21,11 +21,13 @@
  *     Nicolas Reed, rylee4761
  * (the Atlas/Saturn team, EE194 Sp26). Our port: Jonathan Lin.
  *
- * Source of every test: tapeout-chipyard/tests/ (run by the Atlas/Saturn team in VCS on
- * EE290SimConfig and, via run_post_gate_atlas_tests.sh, on the gate-level netlist of
- * EE290TapeoutConfig). The IMEM images are copied word for word. The host code follows the
- * same algorithm with Zephyr I/O and a TIMEOUT instead of upstream's 200-million-iteration
- * spin when Atlas never signals done.
+ * Source of every test: the course tapeout repo (tapeout-chipyard)/tests/ (the files the
+ * Atlas/Saturn team ran in VCS on EE290SimConfig and, via
+ * run_post_gate_atlas_tests.sh, on the gate-level netlist of
+ * EE290TapeoutConfig). The IMEM images below are copied word for word from
+ * those files; the host code is the same algorithm with Zephyr I/O and, new
+ * here, a TIMEOUT instead of a 200-million-iteration spin when Atlas never
+ * signals done.
  *
  *   alu_basic        atlas_alu_basic.c          103-word ALU self-check program
  *   vmem_scalar      saturn_atlas_vmem_smoke.c  host scalar round trip in VMEM
@@ -40,13 +42,14 @@
  *   ATLASK SUMMARY pass=N fail=N timeout=N of N
  *   ATLAS KERNELS=PASS|FAIL              final line, also the exit code
  *
- * Not ported (they need generated golden headers, DRAM at 0x9000_0000 or BF16/FP8 data):
- * tri_phase*, smolvla_compose*, quad_phase_large, pi0_slice, vmem_dram_dual, 8dma_rvv_vmem,
- * fp8_*_bridge, 4rung_2bank_arb, 3way_arb, dmem_sbus_dma. samples/atlas_upstream/tests.cmake
- * lists them.
+ * Not ported (need generated golden headers / DRAM at 0x9000_0000 / BF16 or
+ * FP8 data): tri_phase*, smolvla_compose*, quad_phase_large, pi0_slice,
+ * vmem_dram_dual, 8dma_rvv_vmem, fp8_*_bridge, 4rung_2bank_arb, 3way_arb,
+ * dmem_sbus_dma (all are listed in external/atlas_upstream/tests.cmake).
  *
- * As upstream: no printk between atlas_start() and the host's concurrent IMEM staging.
- * UART/HTIF output takes thousands of cycles and the kernel's busy loop would finish first.
+ * Timing rule copied from upstream: between atlas_start() and the host's
+ * concurrent IMEM staging there must be NO printk. UART/HTIF output costs
+ * thousands of cycles and the kernel's busy loop would finish first.
  */
 
 #include <zephyr/kernel.h>
@@ -104,8 +107,8 @@ static inline void atlas_start(void) { csr_wr(CSR_EXEC, 1); }
 static inline void imem_wr(uint32_t word, uint32_t v) { sys_write32(v, IMEM_BASE + 4u * word); }
 static inline uint32_t imem_rd(uint32_t word) { return sys_read32(IMEM_BASE + 4u * word); }
 
-/* Stop Atlas and clear the mailboxes, which survive a restart and would mask a failure.
- * Same preamble as every upstream test.
+/* Stop Atlas and clear the mailboxes (they survive a restart, so stale values
+ * would mask a failure). Same preamble as every upstream test.
  */
 static void atlas_reset_state(void)
 {
@@ -116,9 +119,10 @@ static void atlas_reset_state(void)
 	fence_io();
 }
 
-/* Write n words to IMEM at word index base and read them back. IMEM must not be read while
- * Atlas runs, so callers use this on a halted core except in the race tests. Returns the
- * number of mismatches.
+/* Write n words to IMEM at word index base, then read them back (IMEM must not
+ * be read while Atlas runs; callers only use this on a halted core, except the
+ * deliberate race tests, which is exactly what they test).
+ * Returns the number of mismatches.
  */
 static int stage_kernel(uint32_t base, const uint32_t *w, uint32_t n, const char *label)
 {
@@ -140,8 +144,8 @@ static int stage_kernel(uint32_t base, const uint32_t *w, uint32_t n, const char
 	return bad;
 }
 
-/* Wait for status.halted or the timeout. On timeout, stop the core so the next test starts
- * from a halted state. Returns true if it halted.
+/* Wait until status.halted, or the timeout. On timeout force execControl=0 so
+ * the next test starts from a stopped core. Returns true if it halted.
  */
 static bool wait_halted(uint32_t *status)
 {

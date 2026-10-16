@@ -8,35 +8,34 @@
 # baremetal: kellytou, Nicolas Reed, jason.tang, Eric Wen, nicorakela. The build
 # logic mirrors tests/CMakeLists.txt there. We own only the files in this directory.
 #
-# Builds one of the Atlas team's host tests straight from their source tree
-# (tapeout-chipyard/tests/*.c), without copying it:
+# Build ONE of the Atlas team's host tests straight from their source tree
+# (tapeout-chipyard/tests/*.c), nothing copied:
 #
-#   west build -b chipyard_penguin/penguin samples/atlas_upstream -- \
+#   west build -b chipyard_penguin/penguin external/atlas_upstream -- \
 #       -DATLAS_TEST=saturn_atlas_pause_resume
 #
-# cmake/plain_app compiles every .c in a directory, but upstream tests/ holds ~45 files that
-# each have a main(), so exactly one file is picked here. The --wrap=main idea is reused in
-# shim/atlas_upstream_shim.c.
+# Why not the plain_app core (cmake/plain_app/)? That core compiles every .c in
+# a directory it is pointed at; the upstream tests/ directory holds ~45 files
+# with their own main() each, so we need to pick exactly one file. We do reuse
+# its idea (link with --wrap=main so that a returning main() ends the run with
+# its value as exit code) in shim/atlas_upstream_shim.c.
 #
-# Variables:
-#   ATLAS_TEST        test name from tests.cmake (the upstream file stem); default
-#                     saturn_atlas_vmem_smoke
-#   TAPEOUT_CHIPYARD  tapeout-chipyard checkout; else the environment variable of the same
-#                     name, else $HOME/toolsB/tapeout-chipyard (course machines)
-# The checkout is read only. Generated files (assembled Atlas kernels, golden-data headers)
-# go into the build directory.
+# Variables (all optional except that ATLAS_TEST defaults to the smallest test):
+#   ATLAS_TEST        test name from tests.cmake (the upstream file stem)
+#   TAPEOUT_CHIPYARD  tapeout-chipyard checkout; -D or the env var of the same name.
+#                     No default location: it must be given.
+# The checkout is only READ. Everything generated (assembled Atlas kernels,
+# golden-data headers) goes into the build directory.
 
 cmake_minimum_required(VERSION 3.20.0)
 
-# ---- locate upstream and pick the test (before find_package, to fail early) -------
+# ---- locate upstream, pick the test (before find_package: fail early) --------------
 if(NOT TAPEOUT_CHIPYARD)
-  if(DEFINED ENV{TAPEOUT_CHIPYARD})
-    set(TAPEOUT_CHIPYARD "$ENV{TAPEOUT_CHIPYARD}")
-  else()
-    set(TAPEOUT_CHIPYARD "$ENV{HOME}/toolsB/tapeout-chipyard")
-  endif()
+  set(TAPEOUT_CHIPYARD "$ENV{TAPEOUT_CHIPYARD}")
 endif()
-get_filename_component(TAPEOUT_CHIPYARD "${TAPEOUT_CHIPYARD}" ABSOLUTE)
+if(TAPEOUT_CHIPYARD)
+  get_filename_component(TAPEOUT_CHIPYARD "${TAPEOUT_CHIPYARD}" ABSOLUTE)
+endif()
 set(UP_TESTS "${TAPEOUT_CHIPYARD}/tests")
 set(UP_ATLAS "${TAPEOUT_CHIPYARD}/generators/sp26-atlas-acc")
 if(NOT EXISTS "${UP_TESTS}/atlas_mmio.h")
@@ -55,7 +54,7 @@ if(NOT ATLAS_TEST IN_LIST ATLAS_ALL_TESTS)
   message(FATAL_ERROR "ATLAS_TEST='${ATLAS_TEST}' is not a known test. Choose one of:\n  ${_l}")
 endif()
 set(_kind "${ATLAS_KIND_${ATLAS_TEST}}")
-# Upstream file stem; differs from the test name only for variants that reuse a .c
+# Upstream file stem: differs from the test name only for variants that reuse a .c
 get_filename_component(_stem "${ATLAS_SRC_${ATLAS_TEST}}" NAME_WE)
 
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
@@ -64,12 +63,12 @@ project(atlas_upstream)
 message(STATUS "atlas_upstream: test ${ATLAS_TEST} (${_kind}) from ${UP_TESTS}")
 
 # ---- generated inputs --------------------------------------------------------------
-# Kinds (see tests.cmake):
-#   asis    the .c needs only atlas_mmio.h (the IMEM program is an array in the .c)
-#   kernel  also kernel_<k>.h (Atlas .S assembled by the team's assembler.py) and a
-#           random-data golden header; pure python
-#   torch   also a golden header from the team's bit-exact numpy/torch models; needs
-#           `import torch`
+# Kinds (inventory: tests.cmake):
+#   asis    the .c only needs atlas_mmio.h (the IMEM program is an array inside the .c)
+#   kernel  + kernel_<k>.h (Atlas .S assembled by the team's assembler.py) and a
+#             random-data golden header; pure python (no numpy/torch)
+#   torch   + golden header computed with the team's bit-exact numpy/torch models.
+#             Needs `import torch`.
 set(GEN_ROOT "${CMAKE_BINARY_DIR}/atlas_upstream_gen")
 set(GEN_KERNELS "${GEN_ROOT}/kernels")
 set(GEN_GOLDEN "${GEN_ROOT}/golden")
@@ -80,14 +79,14 @@ set(ASM_DIR "${UP_ATLAS}/baremetal/assembly/saturn_atlas_cooperative")
 if(NOT PYTHON_EXECUTABLE AND Python3_EXECUTABLE)
   set(PYTHON_EXECUTABLE "${Python3_EXECUTABLE}")
 endif()
-# PYTHONDONTWRITEBYTECODE keeps __pycache__ out of the read-only upstream tree.
+# PYTHONDONTWRITEBYTECODE: do not drop __pycache__ into the READ-ONLY upstream tree.
 set(PYRUN ${CMAKE_COMMAND} -E env PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=${GEN_DIR}
           ${PYTHON_EXECUTABLE})
 set(_gen_outputs)
 
 if(_kind STREQUAL "kernel")
   string(REGEX REPLACE "^saturn_atlas_" "" _short "${_stem}")
-  set(_kname "sas_${_short}")   # saturn_atlas_X uses kernel sas_X.S
+  set(_kname "sas_${_short}")   # upstream: <stem> saturn_atlas_X uses kernel sas_X.S
   add_custom_command(
     OUTPUT ${GEN_KERNELS}/kernel_${_kname}.h
     COMMAND ${PYRUN} ${GEN_DIR}/gen_kernel_header.py
@@ -105,8 +104,9 @@ if(_kind STREQUAL "kernel" OR _kind STREQUAL "torch")
     if(NOT _rc EQUAL 0)
       message(FATAL_ERROR
         "${ATLAS_TEST} needs golden headers from the team's bit-exact models, whose "
-        "generators `import torch` (python: ${PYTHON_EXECUTABLE}). Install torch and numpy "
-        "in the environment that runs cmake.")
+        "generators `import torch` (python: ${PYTHON_EXECUTABLE}), and torch is not "
+        "installed in this environment. Needed: python packages torch + numpy in the env that runs cmake "
+        "(the generators also import the team's software_models/, found via PYTHONPATH).")
     endif()
   endif()
   set(_gen "${ATLAS_GEN_${ATLAS_TEST}}")          # generator stem
@@ -132,8 +132,8 @@ if(_gen_outputs)
 endif()
 
 # ---- the test itself ---------------------------------------------------------------
-# Upstream source compiled unmodified. tests/ supplies atlas_mmio.h, saturn_rvv_mx.h and
-# saturn_atlas_stress_common.h.
+# Upstream source compiled unmodified; the include order matters: upstream tests/
+# supplies atlas_mmio.h, saturn_rvv_mx.h, saturn_atlas_stress_common.h.
 target_sources(app PRIVATE
   ${UP_TESTS}/${ATLAS_SRC_${ATLAS_TEST}}
   shim/atlas_upstream_shim.c)
@@ -143,5 +143,5 @@ if(ATLAS_DEFS_${ATLAS_TEST})
 endif()
 target_compile_definitions(app PRIVATE ATLAS_UPSTREAM_NAME="${ATLAS_TEST}")
 
-# main() becomes __wrap_main() in the shim (result line, exit code, watchdog).
+# main() -> __wrap_main() in the shim: result line, exit code, watchdog.
 zephyr_ld_options(-Wl,--wrap=main)

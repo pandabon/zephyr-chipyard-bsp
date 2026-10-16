@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
-# Copy the workspace's zephyr/ tree and apply patches/zephyr/*.patch to the copy.
+# Make a COPY of the workspace's zephyr/ tree with patches/zephyr/*.patch
+# applied, to test the proposed fork patches without touching zephyr/.
 #
 # Usage: scripts/make_patched_zephyr.sh [OUT_DIR]   (default: ../build/zephyr-patched)
-# Then: ZEPHYR_BASE=<OUT_DIR> west build ...
-#   or: PATCHED_ZEPHYR=<OUT_DIR> scripts/make_bench_bundle.sh
+# Then e.g.: ZEPHYR_BASE=<OUT_DIR> west build ...
+#        or: PATCHED_ZEPHYR=<OUT_DIR> the bench bundle builder (outside this repo)
 set -euo pipefail
 
 BSP="$(cd "$(dirname "$0")/.." && pwd)"
