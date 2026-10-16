@@ -80,27 +80,42 @@ Activate your Python environment too, so `west` is on `PATH`.
 
 ## Quick start
 
-From `zephyr-chipyard-bsp/` with the environment set up:
+Run from `zephyr-chipyard-bsp/` with the environment set up. `west` is the main interface; the `make` targets
+below are shortcuts that print the `west` command they run.
 
 ```sh
-make run APP=hello_rvv                          # build and run on Spike; exit code = the program's
-make run APP=path/to/folder-of-c-files          # compiles every .c/.cpp; main()'s return value is the exit code
-make test                                       # whole suite on Spike
-make flash APP=hello_rvv TTY=/dev/ttyUSB0       # load onto the chip over UART-TSI (BOARD=..., BAUD=... for variants)
-make debug APP=hello_rvv                        # debug build, then gdb on Spike through OpenOCD
-make help                                       # all targets and variables
+west build -p auto -b chipyard_penguin/penguin -d ../build/hello_rvv samples/hello_rvv
+west build -d ../build/hello_rvv -t run                   # run on Spike; the exit code is the program's
+west flash -d ../build/hello_rvv --tty /dev/ttyUSB0       # load onto the chip over UART-TSI
+west debug -d ../build/hello_rvv                          # gdb on Spike through OpenOCD (build with -S debug for -Og)
+scripts/run_tests.py -j 8                                 # the whole suite on Spike
 ```
 
-Each `make` target prints the `west` command it runs. `west app new|build|run|test|dump|clean` does the same
-without make (`west app -h`). `template/app` is a minimal app to copy.
+Other targets: `-b chipyard_penguin/penguin/vcu118_ta` (TA's VCU118; flashing defaults to 115200 baud) or
+`.../vcu118`. A plain folder of `.c`/`.cpp` files builds through `cmake/plain_app` with
+`-- -DPLAIN_APP_DIR=/abs/path`, and `main()`'s return value is the exit code. `template/app` is a minimal app to copy.
 
-**Testing.** `make test ARGS='-f bf16'` filters by name or tag; `scripts/run_tests.py --list` lists the
+Shortcuts:
+
+```sh
+make run APP=hello_rvv                      # build and run on Spike (APP can also be a folder of .c files)
+make flash APP=hello_rvv TTY=/dev/ttyUSB0
+make debug APP=hello_rvv
+make test
+make help                                   # all targets and variables
+```
+
+`west app new|build|run|test|dump|clean` offers the same shortcuts as a west command (`west app -h`). Underneath,
+west runs CMake and Ninja: `cmake -B build -GNinja -DBOARD=chipyard_penguin/penguin samples/hello_rvv` then
+`ninja -C build` and `ninja -C build run` also works (the `run` target does not rebuild), but flashing and debugging need `west` because they use its runners.
+
+**Testing.** `scripts/run_tests.py -f bf16` (or `make test ARGS='-f bf16'`) filters by name or tag; `scripts/run_tests.py --list` lists the
 scenarios. On a full workspace the result is `PASS=21 FAIL=0 SKIP=14 XFAIL=3`. The three XFAIL are in
 `tests/known_failures.yaml`: the RVV context-switch bug, lazy V switching, and a negative test. Scenarios for
 other board variants are skipped unless you pass `--board`, and scenarios that need `TAPEOUT_CHIPYARD`
 (`atlas_upstream`) are skipped when it is absent.
 
-**Hardware.** `make flash` runs `west flash` with the `uart_tsi` runner. It loads the ELF through the FPGA and
+**Hardware.** `west flash` uses the `uart_tsi` runner (`make flash` wraps it). It loads the ELF through the FPGA and
 keeps running as the HTIF console proxy; nothing is persistent. `TTY` is the serial port that carries
 UART-TSI, not the JTAG (FT-LINK) port. Use `BAUD=115200` with `BOARD=chipyard_penguin/penguin/vcu118_ta`.
 `west flash --check` probes the link without starting the core. `--fastload` loads a copy of the ELF whose
