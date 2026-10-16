@@ -2,3 +2,10 @@
 *.md
 *.rst
 !/README.md
+
+# Python bytecode and local build output (the workspace builds in ../build, but a stray in-tree build must not show up as untracked)
+__pycache__/
+/build/
+
+# local documentation folder
+/docs/

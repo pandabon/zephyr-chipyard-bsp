@@ -1,17 +1,19 @@
 # SPDX-License-Identifier: Apache-2.0
 #
-# Variant "vcu118": whole Penguin SoC on a VCU118 (generic Chipyard VCU118 flow, see the DTS
-# header).
+# Variant "vcu118": whole Penguin SoC emulated on a VCU118 (generic Chipyard
+# VCU118 flow assumed, see the DTS header).
 #
-# Zephyr loads only this file for the variant, not chipyard_penguin_defconfig on top, so the
-# common lines below are a copy. Keep them in sync.
+# NOTE: Zephyr loads ONLY this file for the variant (it does not layer it on
+# chipyard_penguin_defconfig), so the common lines below are a copy of the base
+# board's. Keep them in sync when editing chipyard_penguin_defconfig.
 
 # --- variant-specific -------------------------------------------------------
-# Selects 1 MHz mtime, UART input clock = CHIPYARD_FPGA_PBUS_MHZ, and chipyard_sim_exit()
-# without HTIF.
+# The switch the SoC layer keys off: 1 MHz mtime, UART input clock =
+# CHIPYARD_FPGA_PBUS_MHZ, chipyard_sim_exit() without HTIF.
 CONFIG_CHIPYARD_FPGA_EMULATION=y
 
-# Bus clock of the bitstream; 100 is the generic WithVCU118Tweaks default.
+# Bus clock of the bitstream. 100 is the generic WithVCU118Tweaks default;
+# change if the bitstream was built with 25 / 50 / 75.
 CONFIG_CHIPYARD_FPGA_PBUS_MHZ=100
 
 # Console is the sifive UART, not HTIF (no HTIF host on an FPGA).
@@ -19,7 +21,7 @@ CONFIG_UART_HTIF=n
 CONFIG_UART_SIFIVE=y
 CONFIG_UART_SIFIVE_PORT_0=y
 
-# Flat binary for the sdboot SD image (scripts/mk_sdboot_image.sh) or a JTAG load.
+# Flat binary for the sdboot SD image (made by a separate loader tool) / JTAG load.
 CONFIG_BUILD_OUTPUT_BIN=y
 
 # --- copied from chipyard_penguin_defconfig ---------------------------------
@@ -38,8 +40,11 @@ CONFIG_FPU=y
 CONFIG_FPU_SHARING=y
 CONFIG_FLOAT_HARD=y
 
-# SYS_CLOCK_HW_CYCLES_PER_SEC is 1000000 here (soc/chipyard/penguin/Kconfig.defconfig).
-# 10000 ticks/s = 100 us = 100 mtime counts per tick.
+# Clock rates: SYS_CLOCK_HW_CYCLES_PER_SEC (mtime) and RTC_CLOCK_DIVIDER_VALUE
+# are chip facts, so they live in soc/chipyard/penguin/Kconfig.defconfig (one
+# source of truth). Only the kernel tick rate is a board/app policy choice:
+# 10000 ticks/s = 100 us = exactly 100 mtime counts per tick at this board's
+# 1 MHz mtime (SYS_CLOCK_HW_CYCLES_PER_SEC = 1000000 for CHIPYARD_FPGA_EMULATION).
 CONFIG_SYS_CLOCK_TICKS_PER_SEC=10000
 CONFIG_TIMING_FUNCTIONS=y
 

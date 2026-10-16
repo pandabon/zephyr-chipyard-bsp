@@ -10,5 +10,4 @@ build:
     snippet_root: .
 
 runners:
-  - file: scripts/runners/uart_tsi.py
-  - file: scripts/runners/spike.py
+  - file: scripts/spike_runner.py
